@@ -1,77 +1,79 @@
+/*  Walks through a given directory recursively and records all
+    the files there with a given extension (.md in this case).
+    Makes an index file that contains the relative paths to these. */
+
 #include <stdio.h>
-#include <stdlib.h>
 #include <dirent.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
-/*	adapted from
-	https://c-for-dummies.com/blog/?p=3246
-	and subsequent posts */
+#include "librarian.h"
 
-/*
-
-struct mdfile {
-	int id;
-	char *path;
-} */
-
-int rlisting(char *directory, char *parent, int depth, char *pexcl);
-
-int main() {
+/*  Wrapper for walkfiles that only requires two arguments, [filename]
+    for the index and [srcdir] for the directory to walk. Assumes that
+    we are looking for markdown files. */
+FILE *makemdindex(char *filename, char *srcdir) {
 	
-	printf("%d\n", rlisting("src", ".", 0, "."));
+	printf("librarian: making index \x1b[36m%s\x1b[0m for dir \x1b[36m%s\x1b[0m\n", filename, srcdir);
+
+	char workingdir[MAXLEN];
+
+	getcwd(workingdir, MAXLEN);
+
+	FILE *index;
 	
-	return(0);
+	if ((index = fopen(filename, "w+")) == NULL) {
+		printf("failed to open %s\n", filename);
+		return(NULL);
+	}
+	
+	walkfiles(srcdir, ".md", srcdir, index);
+	
+	rewind(index);
+	
+	chdir(workingdir);	
+
+	return(index);
 }
 
-/*	This thing is a lot like a human. It navigates by changing the
-	directory and listing the files, checking if each one is itself
-	a directory. It is not complicated, but it is obtuse because it
-	must conform to the C language.  
-
-	pexcl is used to exclude directories that start with a prefix */
-int rlisting(char *directory, char *parent, int depth, char *pexcl) {
+/*  Walk recursively through [dir], looking for files ending in [ext].
+    Write each file as it is found to an index [writefile]. */
+void walkfiles(char *dir, char *ext, char *parent, FILE *writefile) {
 	
-	char fulldir[strlen(parent)+1+strlen(directory)];
-
-	strcpy(fulldir, parent);
-	strcat(fulldir, "/");
-	strcat(fulldir, directory);
-
-	int filecount = 0;
-	DIR *f; /* a "directory" as opendir understands */
-	struct dirent *entry; /* struct from dirent.h; a "file" as listed in a dir */
-	struct stat filestat; /* struct from stat.h with info about filetypes */
+	DIR *f;
+	struct dirent *entry;
+	struct stat filestat;
 	
-	if (chdir(directory)) {
-		fprintf(stderr, "error at chdir");
-		exit(1);
+	if (chdir(dir)) {
+		fprintf(stderr, "err at cd to %s", dir);
 	}
 	
 	f = opendir(".");
 	if (f == NULL) {
-		fprintf(stderr, "opendir returned NULL");
+		fprintf(stderr, "err opening . directory");
 	}
+	
+	char tempdir[MAXLEN];
 	
 	while (entry = readdir(f)) {
-		stat(entry->d_name,&filestat);
-		if ( S_ISDIR(filestat.st_mode) ) {
-			if (strncmp(entry->d_name,pexcl,strlen(pexcl)) == 0){
+		stat(entry->d_name, &filestat);
+		if (S_ISDIR(filestat.st_mode)) {	
+			if (strncmp(entry->d_name, ".", 1) == 0 
+				|| strcmp(entry->d_name, "..") == 0) {
 				continue;
 			} else {
-				/* printf("%*sD %s\n", depth*2, "", entry->d_name); */
-				filecount += rlisting(entry->d_name, fulldir, depth+1, pexcl);
+				char reldir[strlen(parent)+1+strlen(entry->d_name)];
+				strcpy(reldir, parent);
+				strcat(reldir, "/"); strcat(reldir, entry->d_name);
+				walkfiles(entry->d_name, ext, reldir, writefile);
 			}
 		} else {
-			filecount++;
-			printf("%*s%s/%s\n", depth*2, "", fulldir, entry->d_name);
-			/* printf("%s\n", directory); */
+			if (strstr(entry->d_name, ext)) {
+				fprintf(writefile, "%s/%s\n", parent, entry->d_name);
+			}
 		}
 	}
-	
-	chdir("..");
 	closedir(f);
-
-	return filecount;
+	chdir("..");
 }
