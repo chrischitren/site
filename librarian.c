@@ -17,9 +17,9 @@ FILE *makemdindex(char *filename, char *srcdir) {
 	
 	printf("librarian: making index \x1b[36m%s\x1b[0m for dir \x1b[36m%s\x1b[0m\n", filename, srcdir);
 
-	char workingdir[MAXLEN];
+	char workingdir[MAXDIR];
 
-	getcwd(workingdir, MAXLEN);
+	getcwd(workingdir, MAXDIR);
 
 	FILE *index;
 	
@@ -54,7 +54,7 @@ void walkfiles(char *dir, char *ext, char *parent, FILE *writefile) {
 		fprintf(stderr, "err opening . directory");
 	}
 	
-	char tempdir[MAXLEN];
+	char tempdir[MAXDIR];
 	
 	while (entry = readdir(f)) {
 		stat(entry->d_name, &filestat);
