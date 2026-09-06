@@ -4,7 +4,7 @@
 
 # Header 1
 
-## Header 2
+## Header 2 & an "ampersand"
 
 ### Header 3
 
@@ -18,7 +18,7 @@
 
 This is a line.
 
-![image of a bog](/images/imagebog.png)
+![image of a bog](/images/bog.png)
 
 !for whatever reason this line starts with an exclamation point.
 

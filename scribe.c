@@ -13,6 +13,7 @@ struct page {
 	
 } */
 
+int parseinline(char *out, char *line, int max);
 int parsewholeline(char *out, char *line, int max);
 int sanitizehtml(char *out, char *line, int maxdest, int n);
 
@@ -47,7 +48,8 @@ int main() {
 		
 		
 		if ((tempfile = fopen(indexlinedir, "r")) == NULL) {
-			fprintf(stderr, "could not open file \x1b[31m%s\x1b[0m\n", indexlinedir);
+			fprintf(stderr, "could not open file \x1b[31m%s\x1b[0m\n",
+				indexlinedir);
 			continue;
 		}
 		
@@ -72,49 +74,52 @@ int main() {
 	}
 	
 	fclose(_index);
+
+	char *teststr = "this is a test \\* string *test*";
+	char teststrinline[MAXLINE];
+	
+	printf("%s\n", teststr);
+	
+	parseinline(teststrinline, teststr, MAXLINE);
+
+	printf("%s\n", teststrinline);
 	
 	return(0);
+
 }
 
-int sanitizehtml(char *out, char *line, int maxdest, int n) {
+int parseinline(char *out, char *line, int max) {
+	char outbuf[max];
+	memset(outbuf, 0, max);
 
-	if (n < 0) {
-		n = strlen(line);
-	}
-	
-	char outbuf[maxdest];
-	memset(outbuf, 0, maxdest);
-	int i = 0, j = 0;
-	for (; i < n && j < maxdest-6; i++) {
-		switch (line[i]) {
-			case '<':
-				memcpy(outbuf+j, "&lt;", 4);
-				j += 4;
-				break;
-			case '>':
-				memcpy(outbuf+j, "&gt;", 4);
-				j += 4;
-				break;
-			case '&':
-				memcpy(outbuf+j, "&amp;", 5);
-				j += 5;
-				break;
-			case '\"':
-				memcpy(outbuf+j, "&quot;", 6);
-				j += 6;
-				break;
-			case '\'':
-				memcpy(outbuf+j, "&#39;", 5);
-				j += 5;
-				break;
-			default:
-				memset(outbuf+j, line[i], 1);
-				j++;
+	int i=0, j=0;
+	int escape = 0;
+	for (; i < strlen(line) && j < max-10; i++) {
+		if (!escape) {
+			if (line[i] == '\\') {
+				escape = 1;
+/*				j++;*/
+				continue;
+			} else {
+				switch (line[i]) {
+					case '*':
+						memset(outbuf+j, 'n', 1);
+						j++;
+						break;
+					case '_':
+						memset(
+				}
+			}
+		} else {
+			memset(outbuf+j, line[i], 1);
+			escape = 0;
+			j++;
 		}
 	}
+
 	memset(outbuf+j, '\0', 1);
 
-	strncpy(out, outbuf, maxdest);
+	strncpy(out, outbuf, max);
 
 	return(0);
 }
@@ -125,7 +130,8 @@ int parsewholeline(char *out, char *line, int max) {
 
 	if (line[0] == '!') { /* Image line */
 
-		const char *htmlpatternimg = "<a href=\"%s\"><img src=\"%s\" alt=\"%s\" width=%d></a>";
+		const char *htmlpatternimg = 
+			"<a href=\"%s\"><img src=\"%s\" alt=\"%s\" width=%d></a>";
 
 		/* greedy, but with standards: check if a valid substring exists */
 		int i = 1;
@@ -165,7 +171,8 @@ int parsewholeline(char *out, char *line, int max) {
 		strcat(urlpreview, lastslash+1);
 		urlpreview[indices[3]-indices[2]+8] = '\0';
 
-		snprintf(outbuf, max, htmlpatternimg, url, urlpreview, alt, PAGEWIDTH_PX);
+		snprintf(outbuf, max, htmlpatternimg, 
+			url, urlpreview, alt, PAGEWIDTH_PX);
 
 	} else if (line[0] == '#') { /* Header line */
 		
@@ -174,15 +181,24 @@ int parsewholeline(char *out, char *line, int max) {
 			i++;
 		}
 		
-		if (i > 6) { fprintf(stderr, "ERROR: header larger than 6\n"); return(1); }
-		if (line[i] != ' ') { fprintf(stderr, "ERROR: no space after header\n"); return(1); }
+		if (i > 6) {
+			fprintf(stderr, "ERROR: header larger than 6\n");
+			return(1);
+		}
+		if (line[i] != ' ') {
+			fprintf(stderr, "ERROR: no space after header\n");
+			return(1);
+		}
 		
 		const char htmlhpre[4] = {'<','h',i+48,'>'};
 		const char htmlhpost[5] = {'<','/','h',i+48,'>'};
 
 		size_t lenheader = strcspn(line+i+1, "\n\r");
 		
-		if (lenheader > MAXLINE - 10) { fprintf(stderr, "ERROR: header too long\n"); return(1); }
+		if (lenheader > MAXLINE - 10) {
+			fprintf(stderr, "ERROR: header too long\n");
+			return(1);
+		}
 
 /*		strcpy(outbuf, htmlhpre);*/
 		/************************* SANITIZE!!! ****************************/
@@ -197,10 +213,61 @@ int parsewholeline(char *out, char *line, int max) {
 
 		snprintf(outbuf, max, "<h%d>%s</h%d>", i, sanitized, i);
 	} else {
+		fprintf(stderr, "ERROR: line wrongly passed as wholeline\n");
 		return(1);
 	}
 
 	strncpy(out, outbuf, max);
+
+	return(0);
+}
+
+/*	We could read the input line character by character and allocate
+	exactly as many bytes to the output buffer as we know we'll need;
+	however, since this function will run for almost every line of
+	every file in the source directory, we should optimize it for
+	speed. If we allocate one big buffer that we can treat use with
+	abandon, we don't have to worry about wasting time computing sizes.
+	We want to be able to blitz through the input lines blind. */
+int sanitizehtml(char *out, char *line, int maxdest, int n) {
+
+	if (n < 0) {
+		n = strlen(line);
+	}
+	
+	char outbuf[maxdest];
+	memset(outbuf, 0, maxdest);
+	int i = 0, j = 0;
+	for (; i < n && j < maxdest-6; i++) {
+		switch (line[i]) {
+			case '<':
+				memcpy(outbuf+j, "&lt;", 4);
+				j += 4;
+				break;
+			case '>':
+				memcpy(outbuf+j, "&gt;", 4);
+				j += 4;
+				break;
+			case '&':
+				memcpy(outbuf+j, "&amp;", 5);
+				j += 5;
+				break;
+			case '\"':
+				memcpy(outbuf+j, "&quot;", 6);
+				j += 6;
+				break;
+			case '\'':
+				memcpy(outbuf+j, "&#39;", 5);
+				j += 5;
+				break;
+			default:
+				memset(outbuf+j, line[i], 1);
+				j++;
+		}
+	}
+	memset(outbuf+j, '\0', 1);
+
+	strncpy(out, outbuf, maxdest);
 
 	return(0);
 }
