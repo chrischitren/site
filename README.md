@@ -51,7 +51,7 @@ struct element {                       /****** SIZE JUSTIFICATIONS ******/
 }
 ```
 
-Assuming a pointer is 8 bytes, this sums up to 1+128+64+256+8+4=461 bytes for each element, which is very reasonable! I counted a sample page I made and its most fecund element (`<main>`) has 23 children. The whole document has around 80 elements, so a particularly rambling page might have 500 or so. This is 230 kB to store in the format outlined above.
+Assuming a pointer is 8 bytes, this sums up to 8+1024+64+256+8+4=1620 bytes for each element, which is very reasonable! I counted a sample page I made and its most fecund element (`<main>`) has 23 children. The whole document has around 80 elements, so a particularly rambling page might have 500 or so. This is 810 kB to store in the format outlined above.
 
 Let's assemble an HTML document with these structures. Take the sample markdown:
 
@@ -97,7 +97,7 @@ If we indent the elements to see the tree structure:
 +- 4
 ```
 
-We see that our struct contains insufficient information! We must also know *where* in the parent element the new element should be inserted. (While we're editing, 256 bytes of attributes is wild for a few reasons: first, most elements have no attributes; second, our whole struct only takes up 461 bytes; third, the URLs we need for the most common kind common kind of attribute (`href`) are already present in the markdown source!)
+We see that our struct contains insufficient information! We must also know *where* in the parent element the new element should be inserted. (While we're editing, 256 bytes of attributes is wild for a few reasons: first, most elements have no attributes; second, our whole struct only takes up 1620 bytes; third, the URLs we need for the most common kind common kind of attribute (`href`) are already present in the markdown source!)
 
 We could indicate in each element whether it should open the html element, close it, or both; every time a new subelement is reached while building the tree, its parent is never modified again, the completion of the element is entrusted to the creation of a next sibling. **This is the wrong approach.** It destroys two of the great values of the tree structure: (1) If one node contains malformed data and can't be parsed, we can simply prune the branch, throw an error, and get on with our lives. We don't have to worry about searching the tree for the relevant siblings; (2) The nesting of the elements represented by their pointers to each other can exactly match the nesting of HTML elements. If we allowed opening- and closing-only elements, we could open a tag on one level and close it at a different level (or never, or any number of problematic things).
 
@@ -139,7 +139,7 @@ writetofile(element root, bool recursive):
 	WRITE tag
 
 	if children == 0:
-		for char in [start, end]:
+		for char in [startc, endc]:
 			WRITE escaped(char)
 		WRITE endtag
 	else: 
@@ -154,3 +154,126 @@ writetofile(element root, bool recursive):
 				WRITE child.id
 		WRITE endtag
 ```
+
+### Engineering 2: Intro to Reading
+
+Unfortunately, these elements don't grow on trees (hehe). We'll have to actually build them by reading the markdown, the logic of which we haven't given a ton of thought. We can skip over arbitrary chunks of the file when we reach an element's child, but when should we make new elements? How can we ensure that malformed markdown doesn't produce a malformed tree? My basic idea is that certain sequences of characters start and end every element, but it's difficult to formalize this notion because the sequences follow a complex syntax. Take a heading:
+
+```
+\n
+### This is a heading.\n
+\n
+Content under the heading.\n
+\n
+- List element 1\n
+- List element 2\n
+\n
+More content.\n
+```
+
+All headings start with `{'\n', '#'}`, in that order, except for those on the first line of the file. Possible workarounds are to disallow headings at the start of a file, write special case handling for this, or find another way to identify a heading. I think the first is initially the most appealing, since this would be a good place to put non-printing directives like tags, categories, etc. (These should really be generated dynamically from the content of the page, to avoid sloppiness in the structure of the website.)
+
+Block elements start with `{'\n', '-'}` and `{'\n', '>'}`, unless it is a code block, which starts with `{'\`', '\`', '\`'}`. This last one is an exception, but it's a welcome one, since, as a user of markdown, we enjoy not having to prepend special sequences to all the lines of pasted code blocks (and what if these special sequences look similar to the syntax of the code you're pasting? This would introduce a lot of room for error).
+
+The most desirable solution (to me) is a kind of control-sequence-based pushing-and-popping into and out of tree nodes. This is exactly what HTML is, and it's exactly what I want markdown to be.
+
+```
+	/*  
+	BASIC CONTROL FLOW
+
+	when we get born:
+		LOG START
+		LOG STARTC
+	LOOP: is it the end of the document?
+		do we recognize a control sequence? yes:
+			are we escaped? no:
+				is it one that modifies our current context? yes:
+					by ending it? yes:
+						LOG ENDC
+						(LOG ENDA)
+						LOG END
+						INCREMENT
+						ASCEND
+					no:
+						LOG ENDC
+						LOG STARTA
+				no:
+					are we allowed to recurse in this context? yes:
+						DESCEND
+					no:
+						SKIP
+			yes:
+				SKIP
+		no:
+			SKIP
+		INCREMENT
+	LOG ENDC
+	LOG END
+	ERROR because we didn't wind up back at parent
+	EXPLODE!
+
+
+	What are these control sequences?
+		DSH '-'  DaSH
+		SPC ' '  SPaCe
+		NLN '\n' NewLiNe
+		BTK '`'  BackTicK
+		SBO '['  Square Bracket Open
+		SBC ']'  Square Bracket Close
+		PBO '('  Paren Bracket Open
+		PBC ')'  Paren Bracket Close
+		ABO '<'  Angle Bracket Open
+		ABC '>'  Angle Bracket Close
+		EXC '!'  EXClamation
+		HSH '#'  HaSH
+        1,6      integer from {1,2,3,4,5,6}
+
+		_0_ _1_ _2_    ELEMENT START /END (MOD)     INLINE?
+		-----------    ------------------------     -------
+		NLN NLN DSH    ul, li                           
+		NLN DSH SPC    li /li                           
+		BTK ___ ___    code /code                    yes
+		AST AST ___    strong /strong                yes
+		AST ___ ___    em /em                        yes
+        SBO ___ ___    a(inner)                      yes
+        SBC PBO ___    a(href)                       yes
+        PBC ___ ___    /a                               
+        BTK BTK NLN    pre                              
+        NLN BTK BTK    /pre                             
+        NLN NLN ___    p /p /ul /blockquote             
+        NLN NLN ABC    blockquote                       
+        NLN EXC SBO    img... erm... awkward!           
+        NLN HSH 1,6    wuh? guh?                        
+        ___ ___ ___                                     
+        ___ ___ ___                                     
+        ___ ___ ___                                     
+
+
+	This turns out to be pretty complicated. Do there exist control
+	sequences such that each sequence corresponds to one operation, 
+	potentially querying the state of the machine but not requiring 
+	reading outside of the three-char window, so as to produce valid
+	html trees? A further requirement is that the syntax this system
+	is designed to parse is itself a strict subset of markdown, so 
+	that any well-formed file under my syntax is also a well-formed
+	markdown file?
+
+	Allowing the system to "potentially query" an arbitrary "state"
+	makes this pretty meaningless. What kind of decision making can
+	we subsequently employ? Too many state variables means we might
+	as well just be reading other characters out of the file.
+*/
+```
+
+Once again, we are probably trying to hammer markdown into a shape it doesn't fit comfortably in. We ran into this issue when naively attempting to translate based on spaghetti-string-operations born from an intuitive notion of what markdown strings map to which HTML strings, and we solved it (for the output) by realizing that we were trying to create a particularly structured form of data. The markdown itself is also a "particularly structured form of data," but it isn't as simple a structure as a tree. It looks like some kind of syntax, but it isn't one that maps cleanly to a tree. Even though it ought to be.
+
+What are the "rules of markdown," as I conceive of them?
+
+Outside of a code block:
+
+- A blank line returns to the root.
+- A newline ends the current element (but does not necessarily return to the root)
+
+### Engineering 3: Grammar
+
+ 
