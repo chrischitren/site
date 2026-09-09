@@ -1,4 +1,3 @@
-
 Hello, [this is a link](https://www.google.com) world!
 
 # heading 1
@@ -25,12 +24,15 @@ Another line can come after. It is automatically separated by a linebreak when r
 
 [link](/other.html)
 
+
+
 The desire for perfect control over style leads to bloated tools that devour energy, obfuscate intent, and `test this out`. Acceptance of a small and universal standard, and an acceptance to work *within* the standard, frees oneself from the **tyranny of minutiae.** What about an ***italic, bold element?***
 
 > This is a p inside a block quote.
 > when a linebreak occurs in markdown, a new `<p>` is born!
 > linebreaks
 > what if there were a line that was really long? Like, I'm talking unreasonable lengths. This thing goes right off the edge, *wraps around,* and is continuing as we speak; growth unchecked, characters filling the screen, oh my! Oh, it's over.
+
 
 test here...
 
@@ -58,3 +60,16 @@ int main() {
 ```
 
 This has a `code |||1234567890\`!@#$%^&*()`
+
+
+```
+
+start teh code block . . 
+
+`
+
+11
+
+
+That's cool. segfault !?!?!
+```

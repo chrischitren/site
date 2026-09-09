@@ -276,4 +276,49 @@ Outside of a code block:
 
 ### Engineering 3: Grammar
 
- 
+
+```
+/*
+	The very VERY first thing we must do is find the code blocks. They are
+	not strictly delimited by blank lines like all other element types.
+
+	The very first (next) thing we must do is split the source into chunks
+	delimited by blank lines. Each of these is assigned a tag based on its
+	first (nonspace) character: 
+
+	# 		Heading
+	>		Block quote
+	!		Image
+	-		Unordered list
+
+	If the first (nonspace) character is not a control character, the chunk
+	is a <p> element alone. 
+	
+	These chunks are stored in a list, or perhaps processed sequentially.
+
+	The whole chunk is read into memory so we can treat it like a string.
+	This is to reduce our reading and writing time. 	
+*/
+```
+
+### Engineering 4: Reevaluating Our Decisions
+
+Our goal is to read a markdown file and generate an HTML document. To do this, we must specify what we think "markdown" is. We are coming up with our own tiny flavor here, and we have the requirement that its features are a subset of "standard" markdown's.
+
+Elements are nodes of a tree. The root of this tree is the Document. The following elements are required:
+
+```
+Document
+|
++- Body
+   |
+   +- Main
+```
+
+A markdown file consists of *blocks* or *chunks* that are separated by blank lines. One block represents one child element of the Main element:
+
+
+
+There are two passes:
+
+
