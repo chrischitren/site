@@ -1,105 +1,3 @@
-/* 
-	FIRST PASS CHUNKS:
-
-			Standard: 		<p>
-								text
-							</p>
-	
-	>		Blockquote:		<blockquote>
-								text
-							</blockquote>
-	
-	-		List:			<ul>
-								<li>text</li>
-							</ul>
-
-	1.		Ordered list:	<ol>
-								<li>text</li>
-							</ol>
-	
-	#		Heading:		<h1>text</h1>
-							...
-							<h6>text</h6>
-
-	!		Image:			<a href="link"><img src="link" name="text"></a>
-
-	```		Code block:		<pre>
-	text						text
-	```						</pre>
-
-*/
-
-/*
-	After parsing the first pass, we will not have a tree. We will have a
-	list. Chunks are found using the following algorithm:
-
-FIND CHUNKS:
-
-	Start at the beginning of the document.
-
-	Skip to the first character that is not a newline or space. 
-
-		Are the next three characters exactly "```"? Yes:
-			
-			Mark the beginning of a code block.
-			
-			Skip to the next occurrence of the sequence "```\n.
-				
-				If the end of the document is reached, end the block.
-			
-			Mark the end of the code block.
-		
-		No:
-			
-			Mark the beginning of a block.
-			
-			Identify the block based on	its first character.
-
-			Skip to the next occurrence of the sequence "\n\n".
-	
-				If the end of the document is reached, end the block.
-
-			Mark the end of the block.
-
-	Is it the end of the document? No:
-
-		GOTO "Skip to the first character that is not a newline or space"
-
-	Yes:
-		
-		END
-
-*/
-
-/*
-	
-	We now have a list of chunks that are contiguous regions of similarly-
-	formatted content. They are useful because they allow us to prune the
-	transition table; for example, we will never go from being in a heading
-	to being in a list element. We can define a recursive routine to parse
-	inline text, which contains only literal characters & control sequences
-	with comprehensible nesting rules.
-
-	The inline parser can "eat" symbols greedily. Take the example:
-	
-		Styles draw the ***eye.*** This [*italic* is in a link](/link). This
-		*[link](/link)* is in an italic.
-
-	Our inline parser is a simple state machine. It knows the context of the
-	chunk it is in, and has a transition table based on this context, the
-	current state, and the next character. 
-
-	Our inline parser is a recursive function. When it consumes a character,
-	it may create a new instance of itself with context informed by its own.
-	The things it can do are:
-
-		Consume a character and do nothing.
-		                        append it to self->content.
-		                        append it to self->attributes.
-		                        give birth.
-		                        ascend.
-
-*/
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -143,7 +41,7 @@ int printtree(iElement *root, int depth);
 int main() {
 	char *strtest = "If a [plain link](link_url) is wrapped like `[plain link](link_url)` it should not strip any of the brackets. Adjacent styles like *emphasis*`code` probably do not work! Well, **what about***things that crawl...*";
 
-	char *strtest21 = "*italic* to start; **bold** next; ***both***; *italic **bold*** ***let's hope\\\\* this works** as well as ***t\\*his** one* . . . one*three***two**";	
+	char *strtest21 = "*italic* to start; **bold** next; ***both***; *italic **bold*** ***let's hope\\\\* this works** as well as ***t\\*his** one* . . . one*three***two**  aaa *one**one*";	
 
 	int i = 0;
 
@@ -167,63 +65,12 @@ int main() {
 	return(0);
 }
 
-/*
-	We need to define a way to allow or disallow recursion based on the
-	current context of parseinline. We need to check the next two characters
-	or else we cannot properly parse ***text*** and [links](link_url).
+int parsebacktick(char *chunk, const int chunksz) {
+	int i = 0;
+	int escape = 0;
+
 	
-	The thing to do is to break the text into iElements containing substrings
-	of the original. To do this we loop over the entire thing looking for
-	the delimiters (in order of precedence):
-
-         0123         0123        01         012        01         01
-            .            .         .           .         .          .       
-		\n-...\n+    \n>...\n+    `+...`+    **...**    *+...*+    [+...)+
-		li           p            code       strong     em         a      
-		^ul          ^blockquote                                           
-
-	where + indicates that any character matches. It is important to check for
-	** before * because we don't want to wind up with three nested <em> tags
-	where there should be a <strong><em>...</em></strong>. 
-
-	There is no valid markdown that generates <a><li>text</li></a>, and
-	similarly our parser should *not* generate <code><em>text</em></code>.
-	Thus we must decide which elements can be matched inside which others.
-
-	         inside this,         
-	         li p  cd st em a  
-	 a    li -- -- -- -- -- -- 
-     l t   p -- -- -- -- -- -- 
-     l h  cd YY YY -- YY YY YY 
-     o i  st YY YY -- -- -- YY 
-     w s  em YY YY -- YY -- YY 
-       ?   a YY YY -- YY YY -- 
-
-	UNFORTUNATELY this nice little table is insufficient to parse some of the
-	more obtuse parts of the syntax, at least as far as I can see from my
-	attempts to hack it into order. 
-	
-	Hitting a delimiter will need to call a function (of bespoke design) that
-	inspects the rest of the chunk to find the end of the sequence. Some of
-	these will be very simple functions, like for code blocks: check for the
-	next '`' that isn't escaped. The one for em/strong is less pretty.
-
-	These functions should return a few values: a length (or error code, -1?),
-	whether the inner string is frozen (contains no further unescaped control 
-	characters), an element type... maybe they should just construct the inner
-	string themselves and pass back a pointer to a parent-linked iElement?
-
-	The great value of just returning positions and line lengths is avoiding
-	ever allocating (whether in the heap or in the stack) short-lived buffers.
-	All we do is read, decide, and return an instruction to the primary "read-
-	write head" that has a preloaded copy of the chunk to reference quickly.
-
-	As written, parseasterisk gobbles up MAX_CHUNK_SZ bytes immediately, and
-	any other function will also need to do this. If they just had to read
-	bytes from a pointer+offset and make a stop/continue decision at each char
-	they would (presumably) be much more efficient.
-
-*/
+}
 
 int parseasterisk(void *parent[], int parentsz,
 						char *chunk, const int chunksz, int level, int depth) {
@@ -347,110 +194,6 @@ int parseasterisk(void *parent[], int parentsz,
 
 
 
-/*	BROKEN (BUT THE GIST IS THERE) PSEUDOCODE FOR PARSEASTERISK
-
-	INSIDE = 0;
-	N = 0;
-	START_N = 0;
-	DEPTH = 0;
-	LAST = 0;
-	
-	if you match,
-		N = [length of match]
-		and !INSIDE,
-			START_N = N
-			DEPTH = N
-			and N < 3,
-				skip START_N
-				TAG <- START_N
-			and N == 3,
-				write "***" to buffer
-				skip START_N
-		and INSIDE,
-			and START_N < 3,
-				and N == START_N,
-					write *(content)
-					skip START_N
-				and N == 3,
-					and DEPTH == 3,
-						skip 3-START_N
-						write *(content)
-						skip START_N
-					AND DEPTH < 3,
-						skip START_N
-						write *(content)
-				and N < 3 && N != START_N,
-					DEPTH += N
-					skip N
-			and START_N == 3,
-				and N == 3,
-					skip 1
-					TAG <- 1
-					write *(content+1)
-					skip 2
-				and N < 3,
-					and DEPTH + N >= 3,
-						TAG <- LAST
-						write *(content+LAST)
-						skip LAST
-					and DEPTH + N < 3,
-						LAST = N
-						DEPTH += N
-						skip N
-*/
-/*
-	
-	next time you find a run longer than the current depth, pop up to toplevel,
-	but do so at the *end* of this new run. e.g:
-	
-		*italic **bold text***
-  			-> <em>italic <strong>bold text</strong></em>
-    	
-		*italic**bold text***
-			-> <em>italic<strong>bold text</strong></em>
-			-> <em>italic</em><em>bold text</em></strong>
-	
-	Which parse is "correct"? As a browser, we know that the second HTML is
-	invalid. As backtrackers, we know that there was an alternative parse of
-	the markdown that would have produced valid HTML.
-	
-	The simple solution is to only allow * to be ended by * or ***, and if the
-	latter, then we must "consume" the final asterisk to ensure that subparses
-	are successful. Similarly, ** can only be ended by ** or ***, and we must
-	consume the end of the triplet to leave inner strings well-formed. 
-	
-		+- consumed         +- consumed
-		|                   |
-		*italic**bold text***
-		|      |          |
-		|      |          +- see triplet; can end; skip ahead by 3-depth
-		|      |
-		|      +- cannot end depth 1 with runlength 2      
-		|
-		+- start with depth 1
-	
-	The next problem is starting at depth 3. We cannot know whether we should
-	be in a 1-depth or 2-depth on the first pass, so we cannot know how many
-	characters to consume.
-	
-	We can hack it in the following way:
-	
-		Set the depth to 3 and consume {all 3 asterisks, no asterisks}
-		As we read other runs, count down the depth.
-		When the depth reaches zero, consume the run that did so;
-			calculate what should have been consumed at the start;	
-			prepend asterisks to correct the inner string.
-	
-	This sucks because we have to backtrack (sort of; we can write,
-	
-		***text with** italic*
-		^^^^^^^^^^^^^^^^^^^^^
-	
-	to the buffer, compute that we should have consumed one, and then pass
-	*(buffer+1) as the inner string), but I don't think it's possible to avoid
-	in this case.
-	
-*/
 
 int parseinline(void *parent[], int parentsz,
 						char *chunk,  int level, int depth) {
