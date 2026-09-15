@@ -2,99 +2,162 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define MAX_CHILDREN   32
+#define C_E_MAXCHILDREN 32
 #define MAX_CHUNK_SZ 2048
 
-#define L_P             0
-#define L_LI            1
-#define L_STRONG_EM     2
-#define L_STRONG        3
-#define L_EM            4
-#define L_CODE          5
-#define L_A             6
-#define L_A_TEXT        8
-#define L_A_HREF        7
+typedef struct _celem ChunkElement;
 
-#define L_ROOT          9
-
-typedef struct _ielem iElement;
-
-struct _ielem {
-	iElement *parent;
-	iElement *children[MAX_CHILDREN];
-	char *content;
-	int level;
+struct _celem {
+	char *chunkstr;   /* pointer to the string of the *full* chunk */
+	int chunksz;      /*                 (a string of this length) */
+	void *parent;
+	ChunkElement *children[C_E_MAXCHILDREN];
+	int position;     /* the element's location in chunkstr        */
+	int length;       /* the element's length in bytes             */
+	int type;         /* semantic identifier (e.g. HTML tag)       */
+	int open;         /* 0: no further subelements to be parsed
+	                     1: not yet frozen, try to parse           */
 };
 
+ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos);
+
+int countopenleaves(ChunkElement *c);
 
 int parseinline(void *parent[], int parentsz, 
-						char *chunk,  int level, int depth); 
+						char *chunk,  int level, int depth);
 int parseasterisk(void *parent[], int parentsz, 
-						char *chunk, int chunksz, int level, int depth); 
+						char *chunk, int chunksz, int level, int depth);
 int checkdelim(const char *delim, char *string, int n);
-int realloc_i(iElement *e, char *cont, char *attr);
-iElement *alloc_i(void *parent[], int parentsz,
-					char *cont, int level);
-int cleantree(iElement *root);
-int printtree(iElement *root, int depth);
 
 int main() {
-	char *strtest = "If a [plain link](link_url) is wrapped like `[plain link](link_url)` it should not strip any of the brackets. Adjacent styles like *emphasis*`code` probably do not work! Well, **what about***things that crawl...*";
-
-	char *strtest21 = "*italic* to start; **bold** next; ***both***; *italic **bold*** ***let's hope\\\\* this works** as well as ***t\\*his** one* . . . one*three***two**  aaa *one**one*";	
-
 	int i = 0;
-
-	iElement *rt[64];
+	char *teststr = "test *string* here";
+	ChunkElement *rt;
 	
-	for (; i < 64; i++) {	
-		rt[i] = malloc(sizeof(iElement));
-		rt[i] = NULL;
+	if ((rt = initchunk(teststr, strlen(teststr), 0)) != NULL) {
+		printf("open leaves: %d\n", countopenleaves(rt));
+		for (i = rt->position; i < rt->position+rt->length; i++) {
+			printf("%c", teststr[i]);
+		}
+		printf("\n");
+		free(rt);
 	}
 	
-	alloc_i((void **)rt, 64, strtest, 9);
-	
-	parseasterisk((void **)rt, 64, strtest21, strlen(strtest21), L_ROOT, 0);
-
-	for (i = 0; i < 64; i++) {	
-		cleantree(rt[i]);
-	}
-
-	printf("\n");	
-
 	return(0);
 }
 
-int parsebacktick(char *chunk, const int chunksz) {
-	int i = 0;
-	int escape = 0;
+/*	initchunk will take a string (the chunk) and return a root ChunkElement
+	whose children correspond to the structure of the chunk. */
+ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos) {
+	int i, j;
 
+	const int[9][9] nestingtable = {	
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}, /*                             */ 
+		{0,0,0,0,0,0,0,0,0}  /*                             */ 
+	};
+
+/*
+	
+	void *parent
+	ChunkElement *children[C_E_MAXCHILDREN];
+	int position;
+	int length;
+	int type;
+	int open;
+*/
+	ChunkElement *root;
+	if ((root = malloc(sizeof(ChunkElement))) == NULL) {
+		fprintf(stderr, "[builder] [initchunk] failed to malloc root node\n");
+		return(NULL);
+	}
+	
+	root->parent = NULL;
+	root->chunkstr = _chunkstr;
+	root->position = _chunkpos;	/* root starts at beginning of chunk  */
+	root->length = _chunksz;	/*      and runs through end of chunk */
+	root->type = 0;				/* root type is root                  */
+	root->open = 1;				/* root must start open to find elems */
+	
+	/* loop through the . . . */
+	for (i = 0; i < chunksz; i++) {
+		
+	}
+	
+	return(root);
+}
+
+
+/*	parsechunktree takes a root ChunkElement pointer (p) and reads its
+	associated chunk string. It appends as children any valid subelements,
+	in the form of ChunkElement pointers. NOT RECURSIVE; the handling
+	function must check if there are open leaves and call parsechunktree
+	on each. */
+ChunkElement *parsechunktree(int chunksz,
+								int chunkpos, ChunkElement *p) {
 	
 }
 
+/* 	countopenleaves searches a tree of ChunkElements for nodes that don't have
+	any children, but for which open==1. It returns the sum of c->open ints
+	for these terminal/leaf nodes */ 
+int countopenleaves(ChunkElement *c) {
+	int f = 0;
+	int i = 0;
+	
+	while (i < C_E_MAXCHILDREN && c->children[i] != NULL) {
+		f += countopenleaves(c->children[i], 0);
+		i++;
+	}
+	
+	if (i == 0) {
+		return(c->open);
+	}
+	
+	return(f);
+}
+
+
+/*
+int *parsebacktick(char *chunk, const int chunksz) {
+	int i = 0;
+	int escape = 0;
+	
+	
+	
+	return(0);
+}
+*/
+
 int parseasterisk(void *parent[], int parentsz,
 						char *chunk, const int chunksz, int level, int depth) {
-	int i, j, k;
+	int i, j;
 	char innerbuffer[MAX_CHUNK_SZ];
-
-	int escape = 0;
-
-	int bi = 0;
-
-	int tag = 0;
-
-	int inside = 0;
-	int start_n = 0;
-	int depth_e = 0;	
-	int last_n = 0;
+	
+	int escape = 0;		/* bool; 1:last char was escape, 0:wasn't  */
+	
+	int bi = 0;			/* position of write head in output buffer */
+	
+	int tag = 0;		/* calculated depth of run (might not be   
+						   equal to start_n if start_n==3)         */
+	
+	int inside = 0;		/*                                         */
+	int start_n = 0;	/* length of starting run                  */
+	int depth_e = 0;	/* current depth of emphasis (0, 1, 2, 3)  */
 	
 	printf("\x1b[35m%s\x1b[0m\n\n", chunk);
-
+	
 	for (i = 0; i < strlen(chunk); ) {
 /*tst*/	if (!inside) {
 /*tst*/		memset(innerbuffer, '#', MAX_CHUNK_SZ);
 /*tst*/	}
-
+		
 		if (chunk[i] == '\\' && !escape) {
 			escape = 2;
 		}
@@ -172,7 +235,6 @@ int parseasterisk(void *parent[], int parentsz,
 			/*write*/		bi = 0; 
 							i += j;
 						} else {
-							last_n = j;
 							depth_e -= j;
 							i += j;
 							memset(innerbuffer+bi, '*', j);
@@ -190,9 +252,8 @@ int parseasterisk(void *parent[], int parentsz,
 			escape--;
 		}
 	}
+	return(bi);
 }
-
-
 
 
 int parseinline(void *parent[], int parentsz,
@@ -219,7 +280,7 @@ int parseinline(void *parent[], int parentsz,
 					{ 0, 0, 1, 0, 0, 1, 1, 0, 0},   /*  4   strong        */
 					{ 0, 0, 1, 0, 1, 0, 1, 0, 0},   /*  5   em            */
 					{ 0, 0, 0, 0, 0, 0, 0, 1, 1},   /*  6   a             */
-	                { 0, 0, 0, 0, 0, 0, 0, 0, 0},   /*  7   a>href        */
+					{ 0, 0, 0, 0, 0, 0, 0, 0, 0},   /*  7   a>href        */
 					{ 0, 0, 1, 1, 1, 1, 0, 0, 0},   /*  8   a>text        */
 													/*                    */	
 					{ 1, 1, 1, 1, 1, 1, 1, 0, 0} }; /*  9   toppest       */
@@ -302,7 +363,7 @@ int parseinline(void *parent[], int parentsz,
 							"line ended below toplevel\x1b[0m\n");
 	}
 /*	printf("\n%d\n", mode);*/
-/*                       						
+/*
 	strcpy(ret->content, c);
 	strcpy(ret->attributes, a);
 
@@ -338,59 +399,3 @@ int checkdelim(const char *delim, char *string, int n) {
 	return(j);
 }
 
-iElement *alloc_i(void *parent[], int parentsz, 
-					char *cont, int lvl) {
-	int sizec = strlen(cont);
-	iElement *ret = NULL;
-	int i = 0;
-	while (parent[i] != NULL && i < parentsz) {
-		i++;
-	}
-	if (i == parentsz) {
-		fprintf(stderr, "[builder] [alloc_i] failed append to full parent\n");
-		return(NULL);
-	}
-	if ((ret = malloc(sizeof(iElement))) == NULL) {
-		fprintf(stderr, "[builder] [alloc_i] failed to malloc iElement\n");
-		return(NULL);
-	}
-	parent[i] = ret;
-	ret->content = malloc(sizeof(char) * sizec);
-	strcpy(ret->content, cont);
-	ret->level = lvl;
-	return(ret);
-}
-
-int cleantree(iElement *root) {	
-	int i = 0;
-	if (root == NULL) {
-/*		free(root); */
-		return(0);
-	}
-	while (root->children[i] != NULL && i < MAX_CHILDREN) {
-		cleantree(root->children[i]);
-		i++;
-	}
-	free(root->content);
-	free(root);
-	return(0);
-}
-
-int printtree(iElement *root, int depth) {
-	int i = 0;
-
-	int d = 0;
-	for (; d < depth; d++) {
-		printf("\t");
-	}
-	printf("level:   \x1b[36m%d\x1b[0m\n", root->level);
-	for (d = 0; d < depth; d++) {
-		printf("\t");
-	}
-	printf("content: \x1b[36m%s\x1b[0m\n", root->content);
-
-	while (root->children[i] != NULL && i < MAX_CHILDREN) {
-		printtree(root->children[i], depth+1);
-		i++;
-	}
-}

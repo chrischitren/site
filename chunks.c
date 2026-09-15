@@ -1,0 +1,273 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define C_E_MAXCHILDREN 32
+#define MAX_CHUNK_SZ 2048
+
+typedef struct _celem ChunkElement;
+
+struct _celem {
+	char *chunkstr;   /* pointer to the string of the *full* chunk */
+	int chunksz;      /*                 (a string of this length) */
+	ChunkElement *parent;
+	ChunkElement *children[C_E_MAXCHILDREN];
+	int position;     /* the element's location in chunkstr        */
+	int length;       /* the element's length in bytes             */
+	int type;         /* semantic identifier (e.g. HTML tag)       */
+	int open;         /* 0: no further subelements to be parsed
+	                     1: not yet frozen, try to parse           */
+};
+
+ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos);
+ChunkElement *parsechunkelement(ChunkElement *c);
+int countopenleaves(ChunkElement *c);
+int parseasterisk(char *chunk);
+
+int main() {
+/*
+	const int nestingtable[9][9] = {	
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
+		{0,0,0,0,0,0,0,0,0}  /~*                             *~/ 
+	};*/
+	int i = 0;
+	char *teststr = "This is an *italic **bolditalic*** string. This is just *italic* and this is just **bold**.";
+	ChunkElement *rt;
+	
+	if ((rt = initchunk(teststr, strlen(teststr), 0)) != NULL) {
+		printf("open leaves: %d\n", countopenleaves(rt));
+		for (i = rt->position; i < rt->position+rt->length; i++) {
+			printf("%c", teststr[i]);
+		}
+		printf("\n");
+		free(rt);
+	}
+	
+	return(0);
+}
+
+/*	initchunk will take a string (the chunk) and return a root ChunkElement
+	whose children correspond to the structure of the chunk. */
+ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos) {
+/*	int i, j;*/
+
+/*
+	
+	void *parent
+	ChunkElement *children[C_E_MAXCHILDREN];
+	int position;
+	int length;
+	int type;
+	int open;
+*/
+	ChunkElement *root;
+	if ((root = malloc(sizeof(ChunkElement))) == NULL) {
+		fprintf(stderr, "[builder] [initchunk] failed to malloc root node\n");
+		return(NULL);
+	}
+	
+	root->parent = NULL;
+	root->chunkstr = _chunkstr;
+	root->position = _chunkpos;	/* root starts at beginning of chunk  */
+	root->length = _chunksz;	/*      and runs through end of chunk */
+	root->type = 0;				/* root type is root                  */
+	root->open = 1;				/* root must start open to find elems */
+	
+	parsechunkelement(root);
+	
+	return(root);
+}
+
+
+/*	parsechunkelement takes an open ChunkElement found at c and reads its
+	associated chunk string. It appends as children any valid subelements in
+	the form of ChunkElement pointers. NOT RECURSIVE; the handling function
+	must check if there are open leaves and call parsechunkelement on each. */
+ChunkElement *parsechunkelement(ChunkElement *c) {
+	int i = 0;
+	int offset = c->position;
+	
+	if (c->open == 0) {
+		return(NULL);
+	}
+	
+	while(i < c->length) {
+		/* read the next character at
+			      *((c->chunkstr)+(c->position)+i)
+			i.e.  *((c->chunkstr)+offset+i) */
+		if (*((c->chunkstr)+offset+i) == '*') {
+		/*	printf("\x1b[36mparsechunkelement found * at i=%d\x1b[0m\n", i);*/
+			i += parseasterisk((c->chunkstr)+offset+i) + 1;
+		} else {
+			printf("\x1b[33m%c\x1b[0m", *((c->chunkstr)+offset+i));
+		}
+		i++;
+	}
+	printf("\n");
+	return(NULL);
+}
+
+/* 	countopenleaves searches a tree of ChunkElements for nodes that don't have
+	any children, but for which open==1. It returns the sum of c->open ints
+	for these terminal/leaf nodes */ 
+int countopenleaves(ChunkElement *c) {
+	int f = 0;
+	int i = 0;
+	
+	while (i < C_E_MAXCHILDREN && c->children[i] != NULL) {
+		f += countopenleaves(c->children[i]);
+		i++;
+	}
+	
+	if (i == 0) {
+		return(c->open);
+	}
+	
+	return(f);
+}
+
+
+
+/*
+int *parsebacktick(char *chunk, const int chunksz) {
+	int i = 0;
+	int escape = 0;
+	
+	
+	
+	return(0);
+}
+*/
+
+
+/*  parseasterisk finds the length of the next and returns innerlength & skiplength */
+int parseasterisk(char *chunk) {
+	int i, j;
+	char innerbuffer[MAX_CHUNK_SZ];
+	
+	int escape = 0;		/* bool; 1:last char was escape, 0:wasn't  */
+	
+	int bi = 0;			/* position of write head in output buffer */
+	
+	int tag = 0;		/* calculated depth of run (might not be   
+						   equal to start_n if start_n==3)         */
+	
+	int inside = 0;		/*                                         */
+	int start_n = 0;	/* length of starting run                  */
+	int depth_e = 0;	/* current depth of emphasis (0, 1, 2, 3)  */
+	
+/*	printf("\x1b[35m%s\x1b[0m\n\n", chunk);*/
+	
+	for (i = 0; i < strlen(chunk); ) {
+/*tst*/	if (!inside) {
+/*tst*/		memset(innerbuffer, '#', MAX_CHUNK_SZ);
+/*tst*/	}
+		
+		if (chunk[i] == '\\' && !escape) {
+			escape = 2;
+		}
+		if (chunk[i] == '*' && !escape) {
+			for (j = 0; i+j < strlen(chunk); j++) { 
+				if (chunk[i+j] != '*') {
+					break;
+				}
+				if (j > 3) {
+					break;
+				}
+			}
+			if (!inside) {
+				bi = 0;
+				inside = 1;
+				start_n = j;
+				depth_e = j;
+				if (j < 3) {
+					i += start_n;
+					tag = start_n;
+				} else if (j == 3) {
+					memset(innerbuffer+bi, '*', 3);
+					bi += 3;
+					i += 3;
+				}
+			} else {
+				if (start_n < 3) {
+					if (j == start_n) {
+		/*write*/		innerbuffer[bi] = '\0';
+		/*write*/		printf("(s<3exact %d \x1b[35m%s\x1b[0m)", tag, innerbuffer);
+						return(bi);
+		/*write*/		inside = 0; 
+		/*write*/		bi = 0; 
+						i += start_n;
+					} else if (j == 3) {
+						if (depth_e == 3) {
+							i += 3-start_n;
+							memset(innerbuffer+bi, '*', 3-start_n);
+							bi += 3-start_n;
+			/*write*/		innerbuffer[bi] = '\0'; 
+			/*write*/		printf("(s<3 d=3  %d \x1b[35m%s\x1b[0m)", tag, innerbuffer);
+							return(bi);
+			/*write*/		inside = 0; 
+			/*write*/		bi = 0; 
+							i += start_n;
+						} else if (depth_e < 3) {
+			/*write*/		innerbuffer[bi] = '\0'; 
+			/*write*/		printf("(s<3 d<3  %d \x1b[35m%s\x1b[0m)", tag, innerbuffer);
+							return(bi);
+			/*write*/		inside = 0; 
+			/*write*/		bi = 0; 
+							i += start_n;
+						}
+					} else {
+						depth_e += j;
+						i += j;
+						memset(innerbuffer+bi, '*', j);
+						bi += j;
+					}
+				} else if (start_n == 3) {
+					if (j == 3) {
+						i += 2;
+						tag = 1;
+						memset(innerbuffer+bi, '*', 2);
+						bi += 2;
+		/*write*/		innerbuffer[bi] = '\0'; 
+		/*write*/		printf("(s=3exact %d \x1b[35m%s\x1b[0m)", tag, (innerbuffer+1));
+						return(bi);
+		/*write*/		inside = 0; 
+		/*write*/		bi = 0; 
+						i += 1;
+					} else {
+						if (depth_e-j <= 0) {
+							tag = j;
+			/*write*/		innerbuffer[bi] = '\0'; 
+			/*write*/		printf("(s=3 d>=3 %d \x1b[35m%s\x1b[0m)", tag, 
+										(innerbuffer+j));
+							return(bi);
+			/*write*/		inside = 0; 
+			/*write*/		bi = 0; 
+							i += j;
+						} else {
+							depth_e -= j;
+							i += j;
+							memset(innerbuffer+bi, '*', j);
+							bi += j;
+						}
+					}
+				}
+			}
+		} else {
+			innerbuffer[bi] = chunk[i];
+			bi++;
+			i++;
+		}
+		if (escape) {
+			escape--;
+		}
+	}
+	return(bi);
+}

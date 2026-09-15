@@ -1,7 +1,8 @@
-/*  Walks through a given directory recursively and records all
-    the files there with a given extension (.md in this case).
-    Makes an index file that contains the relative paths to these. */
-
+/*
+	Walks through a given directory recursively and records all
+	the files there with a given extension (.md in this case).
+	Makes an index file that contains the relative paths to these.
+*/
 #include <stdio.h>
 #include <dirent.h>
 #include <string.h>
@@ -15,7 +16,9 @@
     we are looking for markdown files. */
 FILE *makemdindex(char *filename, char *srcdir) {
 	
-	printf("librarian: making index \x1b[36m%s\x1b[0m for dir \x1b[36m%s\x1b[0m\n", filename, srcdir);
+	printf(
+		"[librarian] making index \"%s\" for dir \"%s\"\n",
+		filename, srcdir);
 
 	char workingdir[MAXDIR];
 
@@ -24,7 +27,9 @@ FILE *makemdindex(char *filename, char *srcdir) {
 	FILE *index;
 	
 	if ((index = fopen(filename, "w+")) == NULL) {
-		printf("failed to open %s\n", filename);
+		fprintf(stderr, "\x1b[31m[librarian] [makemdindex]"
+			" failed to open \"%s\"\x1b[0m\n", 
+			filename);
 		return(NULL);
 	}
 	
@@ -46,12 +51,14 @@ void walkfiles(char *dir, char *ext, char *parent, FILE *writefile) {
 	struct stat filestat;
 	
 	if (chdir(dir)) {
-		fprintf(stderr, "err at cd to %s", dir);
+		fprintf(stderr, "\x1b[31m[librarian] [walkfiles]"
+			" could not cd to \"%s\"\x1b[0m\n", dir);
 	}
 	
 	f = opendir(".");
 	if (f == NULL) {
-		fprintf(stderr, "err opening . directory");
+		fprintf(stderr, "\x1b[31m[librarian] [walkfiles]"
+			" failed to open \".\"\x1b[0m\n");
 	}
 	
 	char tempdir[MAXDIR];
