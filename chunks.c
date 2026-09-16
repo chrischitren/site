@@ -2,8 +2,15 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define C_E_MAXCHILDREN 32
+#define C_E_MAXCHILDREN 8
 #define MAX_CHUNK_SZ 2048
+
+enum CEType {
+	TYPE_PLAIN = 0,
+	TYPE_P,
+	TYPE_EM,
+	TYPE_STRONG
+};
 
 typedef struct _celem ChunkElement;
 
@@ -19,14 +26,17 @@ struct _celem {
 	                     1: not yet frozen, try to parse           */
 };
 
-ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos);
+ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos,
+						int _type, int _open, ChunkElement *_parent);
 ChunkElement *parsechunkelement(ChunkElement *c);
 int countopenleaves(ChunkElement *c);
-int parseasterisk(char *chunk);
+void printchunktree(ChunkElement *c, int depth);
+int rfree(ChunkElement *c);
+int parseasterisk(char *chunk, int *_contentsz, int *_delimsz);
 
 int main() {
 /*
-	const int nestingtable[9][9] = {	
+	const int nestingtable[9][9] = {
 		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
 		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
 		{0,0,0,0,0,0,0,0,0}, /~*                             *~/ 
@@ -38,16 +48,23 @@ int main() {
 		{0,0,0,0,0,0,0,0,0}  /~*                             *~/ 
 	};*/
 	int i = 0;
-	char *teststr = "This is an *italic **bolditalic*** string. This is just *italic* and this is just **bold**.";
+	char *teststr = 
+		"***emstrong** em* noemph *em **emstrong** em* none **strong *emstrong* strong**.";
 	ChunkElement *rt;
 	
-	if ((rt = initchunk(teststr, strlen(teststr), 0)) != NULL) {
+	if ((rt = initchunk(teststr, strlen(teststr), 0, 0, 1, NULL)) != NULL) {
 		printf("open leaves: %d\n", countopenleaves(rt));
 		for (i = rt->position; i < rt->position+rt->length; i++) {
-			printf("%c", teststr[i]);
+		/*	printf("%c", teststr[i]);*/
 		}
-		printf("\n");
-		free(rt);
+		printf("parsing\n");
+		
+		parsechunkelement(rt);
+		printchunktree(rt, 0);
+		
+		printf("open leaves: %d\n", countopenleaves(rt));
+		
+		rfree(rt);
 	}
 	
 	return(0);
@@ -55,32 +72,42 @@ int main() {
 
 /*	initchunk will take a string (the chunk) and return a root ChunkElement
 	whose children correspond to the structure of the chunk. */
-ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos) {
-/*	int i, j;*/
-
-/*
+ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos, 
+						int _type, int _open, ChunkElement *_parent) {
+	int i;
 	
-	void *parent
-	ChunkElement *children[C_E_MAXCHILDREN];
-	int position;
-	int length;
-	int type;
-	int open;
-*/
 	ChunkElement *root;
 	if ((root = malloc(sizeof(ChunkElement))) == NULL) {
-		fprintf(stderr, "[builder] [initchunk] failed to malloc root node\n");
+		fprintf(stderr, "\x1b[31m[chunks] [initchunk]"
+						" failed to malloc root node\x1b[0m\n");
 		return(NULL);
 	}
 	
-	root->parent = NULL;
-	root->chunkstr = _chunkstr;
-	root->position = _chunkpos;	/* root starts at beginning of chunk  */
-	root->length = _chunksz;	/*      and runs through end of chunk */
-	root->type = 0;				/* root type is root                  */
-	root->open = 1;				/* root must start open to find elems */
+	root->parent = _parent;
+	if (_parent != NULL) {
+		for (i = 0; i < C_E_MAXCHILDREN; i++) {
+			if (_parent->children[i] == NULL) {
+				_parent->children[i] = root;
+				break;
+			}
+		}
+		if (i == C_E_MAXCHILDREN) {
+			fprintf(stderr, "\x1b[31m[chunks] [initchunk]"
+							" parent has too many children\x1b[0m\n");
+			free(root);
+			return(NULL);
+		}
+	}
 	
-	parsechunkelement(root);
+	for(i = 0; i < C_E_MAXCHILDREN; i++) {
+		root->children[i] = NULL;
+	}
+	
+	root->chunkstr = _chunkstr;
+	root->position = _chunkpos; /* root starts at beginning of chunk  */
+	root->length = _chunksz;    /*      and runs through end of chunk */
+	root->type = _type;
+	root->open = _open;
 	
 	return(root);
 }
@@ -92,49 +119,39 @@ ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos) {
 	must check if there are open leaves and call parsechunkelement on each. */
 ChunkElement *parsechunkelement(ChunkElement *c) {
 	int i = 0;
+	
+	
+	
 	int offset = c->position;
+	int contentlength = 0;
+	int skiplength = 0;
+/*	int childindex = 0;*/
 	
 	if (c->open == 0) {
 		return(NULL);
 	}
-	
+
 	while(i < c->length) {
-		/* read the next character at
-			      *((c->chunkstr)+(c->position)+i)
-			i.e.  *((c->chunkstr)+offset+i) */
+		
 		if (*((c->chunkstr)+offset+i) == '*') {
-		/*	printf("\x1b[36mparsechunkelement found * at i=%d\x1b[0m\n", i);*/
-			i += parseasterisk((c->chunkstr)+offset+i) + 1;
+			/* TODO: standardize parse functions as writing to 
+			         int pointers; use return value as error code. */
+			if (parseasterisk((c->chunkstr)+offset+i, 
+							&contentlength, &skiplength) == 0) {
+				initchunk(c->chunkstr, contentlength, offset+i+skiplength,
+						TYPE_EM-1+skiplength, 1, c);
+				i += contentlength + 2*skiplength;
+			} else {
+				/* skip this asterisk if parseasterisk returns error code */
+				i++;
+			}
 		} else {
-			printf("\x1b[33m%c\x1b[0m", *((c->chunkstr)+offset+i));
+			i++;
 		}
-		i++;
 	}
 	printf("\n");
 	return(NULL);
 }
-
-/* 	countopenleaves searches a tree of ChunkElements for nodes that don't have
-	any children, but for which open==1. It returns the sum of c->open ints
-	for these terminal/leaf nodes */ 
-int countopenleaves(ChunkElement *c) {
-	int f = 0;
-	int i = 0;
-	
-	while (i < C_E_MAXCHILDREN && c->children[i] != NULL) {
-		f += countopenleaves(c->children[i]);
-		i++;
-	}
-	
-	if (i == 0) {
-		return(c->open);
-	}
-	
-	return(f);
-}
-
-
-
 /*
 int *parsebacktick(char *chunk, const int chunksz) {
 	int i = 0;
@@ -147,29 +164,20 @@ int *parsebacktick(char *chunk, const int chunksz) {
 */
 
 
-/*  parseasterisk finds the length of the next and returns innerlength & skiplength */
-int parseasterisk(char *chunk) {
+/*  parseasterisk finds the length of the next and returns innerlength; needs
+	to return length of delimiter as well */
+int parseasterisk(char *chunk, int *_contentsz, int *_delimsz) {
 	int i, j;
-	char innerbuffer[MAX_CHUNK_SZ];
 	
-	int escape = 0;		/* bool; 1:last char was escape, 0:wasn't  */
+	int escape = 0;     /* bool; 1:last char was escape, 0:wasn't  */
 	
-	int bi = 0;			/* position of write head in output buffer */
+	int bi = 0;         /* position of write head in output buffer */
 	
-	int tag = 0;		/* calculated depth of run (might not be   
-						   equal to start_n if start_n==3)         */
-	
-	int inside = 0;		/*                                         */
-	int start_n = 0;	/* length of starting run                  */
-	int depth_e = 0;	/* current depth of emphasis (0, 1, 2, 3)  */
-	
-/*	printf("\x1b[35m%s\x1b[0m\n\n", chunk);*/
+	int inside = 0;     /*                                         */
+	int start_n = 0;    /* length of starting run                  */
+	int depth_e = 0;    /* current depth of emphasis (0, 1, 2, 3)  */
 	
 	for (i = 0; i < strlen(chunk); ) {
-/*tst*/	if (!inside) {
-/*tst*/		memset(innerbuffer, '#', MAX_CHUNK_SZ);
-/*tst*/	}
-		
 		if (chunk[i] == '\\' && !escape) {
 			escape = 2;
 		}
@@ -189,79 +197,52 @@ int parseasterisk(char *chunk) {
 				depth_e = j;
 				if (j < 3) {
 					i += start_n;
-					tag = start_n;
+					*_delimsz = start_n;
 				} else if (j == 3) {
-					memset(innerbuffer+bi, '*', 3);
 					bi += 3;
 					i += 3;
 				}
 			} else {
 				if (start_n < 3) {
 					if (j == start_n) {
-		/*write*/		innerbuffer[bi] = '\0';
-		/*write*/		printf("(s<3exact %d \x1b[35m%s\x1b[0m)", tag, innerbuffer);
-						return(bi);
-		/*write*/		inside = 0; 
-		/*write*/		bi = 0; 
-						i += start_n;
+						*_contentsz = bi; /* w */
+						return(0);        /* w */
 					} else if (j == 3) {
 						if (depth_e == 3) {
 							i += 3-start_n;
-							memset(innerbuffer+bi, '*', 3-start_n);
 							bi += 3-start_n;
-			/*write*/		innerbuffer[bi] = '\0'; 
-			/*write*/		printf("(s<3 d=3  %d \x1b[35m%s\x1b[0m)", tag, innerbuffer);
-							return(bi);
-			/*write*/		inside = 0; 
-			/*write*/		bi = 0; 
-							i += start_n;
+							*_contentsz = bi; /* w */
+							return(0);        /* w */
 						} else if (depth_e < 3) {
-			/*write*/		innerbuffer[bi] = '\0'; 
-			/*write*/		printf("(s<3 d<3  %d \x1b[35m%s\x1b[0m)", tag, innerbuffer);
-							return(bi);
-			/*write*/		inside = 0; 
-			/*write*/		bi = 0; 
-							i += start_n;
+							*_contentsz = bi; /* w */
+							return(0);        /* w */
 						}
 					} else {
 						depth_e += j;
 						i += j;
-						memset(innerbuffer+bi, '*', j);
 						bi += j;
 					}
 				} else if (start_n == 3) {
 					if (j == 3) {
 						i += 2;
-						tag = 1;
-						memset(innerbuffer+bi, '*', 2);
 						bi += 2;
-		/*write*/		innerbuffer[bi] = '\0'; 
-		/*write*/		printf("(s=3exact %d \x1b[35m%s\x1b[0m)", tag, (innerbuffer+1));
-						return(bi);
-		/*write*/		inside = 0; 
-		/*write*/		bi = 0; 
-						i += 1;
+						*_delimsz = 1;    /* w */
+						*_contentsz = bi-1; /* w */
+						return(0);        /* w */
 					} else {
 						if (depth_e-j <= 0) {
-							tag = j;
-			/*write*/		innerbuffer[bi] = '\0'; 
-			/*write*/		printf("(s=3 d>=3 %d \x1b[35m%s\x1b[0m)", tag, 
-										(innerbuffer+j));
-							return(bi);
-			/*write*/		inside = 0; 
-			/*write*/		bi = 0; 
-							i += j;
+							*_delimsz = j;    /* w */
+							*_contentsz = bi-j; /* w */
+							return(0);        /* w */
 						} else {
 							depth_e -= j;
 							i += j;
-							memset(innerbuffer+bi, '*', j);
 							bi += j;
 						}
 					}
 				}
 			}
 		} else {
-			innerbuffer[bi] = chunk[i];
 			bi++;
 			i++;
 		}
@@ -269,5 +250,65 @@ int parseasterisk(char *chunk) {
 			escape--;
 		}
 	}
-	return(bi);
+	return(1);
 }
+
+/* 	countopenleaves searches a tree of ChunkElements for nodes that don't have
+	any children, but for which open==1. It returns the sum of c->open ints
+	for these terminal/leaf nodes */ 
+int countopenleaves(ChunkElement *c) {
+	int f = 0;
+	int i = 0;
+	
+	if(c->children[0] == NULL) {
+		return(c->open);
+	}
+	
+	while (i < C_E_MAXCHILDREN) {
+		if (c->children[i] != NULL) {
+			f += countopenleaves(c->children[i]);
+		}
+		i++;
+	}
+	
+	return(f);
+}
+
+void printchunktree(ChunkElement *c, int depth) {
+	int i = 0;
+	if (c->open == 0) {
+		printf("\x1b[36m");
+	} else {
+		printf("\x1b[33m");
+	}
+	
+	printf("%*s%p\n", depth*4, " ", (void *)c);
+	printf("%*stype=%d\n", depth*4, " ", c->type);
+	printf("%*sopen=%d\n", depth*4, " ", c->open);
+	printf("%*s\"", depth*4, " ");
+	for (i = c->position; i < c->position + c->length; i++) {
+		printf("%c", *((c->chunkstr)+i));
+	}
+	printf("\"\x1b[0m\n");
+	i = 0;
+	while (i < C_E_MAXCHILDREN) {
+		if (c->children[i] != NULL) {
+			printf("%*s%p\n", depth*4, " ", (void *)(c->children[i]));
+			printchunktree(c->children[i], depth+1);
+		}
+		i++;
+	}
+}
+
+int rfree(ChunkElement *c) {
+	int i = 0;
+	while (i < C_E_MAXCHILDREN) {
+		if (c->children[i] != NULL) {
+			rfree(c->children[i]);
+		}
+		i++;
+	}
+	free(c);
+	return(0);
+}
+
