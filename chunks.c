@@ -6,6 +6,7 @@
 #define MAX_CHUNK_SZ 2048
 
 enum CEType {
+	TYPE_ATTRIBUTE,
 	TYPE_PLAIN = 0, /* plain text!!! */
 	
 /****** ROOT NODE (FULL CHUNK) TYPES ******/
@@ -88,6 +89,8 @@ struct _celem {
 	                     1: not yet frozen, try to parse           */
 };
 
+int parseopenleaves(ChunkElement *c);
+
 ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos,
 						int _type, int _open, ChunkElement *_parent);
 ChunkElement *parsechunkelement(ChunkElement *c);
@@ -100,7 +103,7 @@ void printchunktree(ChunkElement *c, int depth);
 int rfree(ChunkElement *c);
 
 int main() {
-	int i = 0;
+	int maxdepth = 16;
 /*	char *teststr = 
 		"> ***emstrong** em* noemph `code` *em **emstrong notcode** em*\n"
 		"> *`emcode`* none **strong *emstrong* strong**.\n"
@@ -110,25 +113,25 @@ int main() {
 
 char *teststr = 
 		"- this is a list item\n"
-		"containing a paragraph break\n"
-		"- followed by another list item."
-		"- followed by a third-whoa! --\n";
+		"containing **a *paragraph*** break\n"
+		"- followed by another *list item.*\n"
+		"- followed by a [bracketed statement] *italic* third-whoa! --\n"
+		"- followed by a [link text](linkurl) with post*infix*\n"
+		"and a new paragraph! Then \\![image text](imgurl)\n"
+		"- now a new list element. \\*escaped italic.*\n"
+		"- image: ![image *italic* text](imgurl) wow!";
 	ChunkElement *rt;
 	
 	if ((rt = initchunk(teststr, strlen(teststr), 0, TYPE_UL, 1, NULL)) != NULL) {
 		printf("open leaves: %d\n", countopenleaves(rt));
 		printf("parsing\n");
 		
-		parsechunkelement(rt);
-		for (i = 0; i < C_E_MAXCHILDREN; i++) {
-			if (rt->children[i] != NULL) {
-				parsechunkelement(rt->children[i]);
-			}
+		while (maxdepth > 0 && countopenleaves(rt) > 0) {
+			parseopenleaves(rt);
+			maxdepth--;
 		}
 		
 		printchunktree(rt, 0);
-		
-		
 		
 		printf("open leaves: %d\n", countopenleaves(rt));
 		
@@ -139,6 +142,26 @@ char *teststr =
 	
 	return(0);
 }
+
+
+int parseopenleaves(ChunkElement *c) {
+	int i = 0;
+	
+	if (c->children[0] == NULL && c->open) {
+		parsechunkelement(c);
+		return(0);
+	}
+	
+	while (i < C_E_MAXCHILDREN) {
+		if (c->children[i] != NULL) {
+			parseopenleaves(c->children[i]);
+		}
+		i++;
+	}
+	
+	return(1);
+}
+
 
 /*	initchunk will take a string (the chunk) and return a root ChunkElement
 	whose children correspond to the structure of the chunk. */
@@ -183,7 +206,6 @@ ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos,
 }
 
 
-
 /*	parsechunkelement takes an open ChunkElement found at c and reads its
 	associated chunk string. It appends as children any valid subelements in
 	the form of ChunkElement pointers. NOT RECURSIVE; the handling function
@@ -218,6 +240,13 @@ ChunkElement *parsechunkelement(ChunkElement *c) {
 		} else {
 			escape = 0;
 		}
+
+		if (c->type == TYPE_PRE) {
+			if (*pci == '\0') {
+				initchunk(c->chunkstr, i-lastwritepos, offset+lastwritepos,
+					TYPE_PLAIN, 0, c);
+			}
+		}
 		
 		/* Split <blockquote> into <p>s; linebreaks cause new <p> children. */
 		if (c->type == TYPE_BLOCKQUOTE) {
@@ -239,8 +268,13 @@ ChunkElement *parsechunkelement(ChunkElement *c) {
 				lastwritepos += 2;
 				i += 2;
 			}
-			if (((*pci == '-' && *(pci-1) == '\n') || *pci == '\0') && i != lastwritepos) {
+			if ((*pci == '-' && *(pci-1) == '\n') && i != lastwritepos) {
 				initchunk(c->chunkstr, i-lastwritepos-1, offset+lastwritepos,
+					TYPE_LI, 1, c);
+				lastwritepos = i+2;
+			}
+			if (*pci == '\0' && i != lastwritepos) {
+				initchunk(c->chunkstr, i-lastwritepos, offset+lastwritepos,
 					TYPE_LI, 1, c);
 				lastwritepos = i+2;
 			}
@@ -254,22 +288,95 @@ ChunkElement *parsechunkelement(ChunkElement *c) {
 				lastwritepos = i+1;
 			}
 		}
+
+		if (c->type == TYPE_A || c->type == TYPE_IMG) {
+			if (i == 0 && *pci == '!' && c->type == TYPE_A) {
+				initchunk(c->chunkstr, c->length, offset, TYPE_IMG, 1, c);
+				parsesimple(pci, &contentsz, '!', ']');
+				skippedsz = contentsz + 2;
+				i += skippedsz;
+			} else {
+				if (*pci == '[') {
+					if (parsesimple(pci, &contentsz, '[', ']') == 0) {
+						initchunk(c->chunkstr, contentsz, offset+i+1,
+									TYPE_PLAIN, 1, c);
+						skippedsz = contentsz + 2;
+						i += skippedsz;
+					}
+				}
+			}
+			if (*pci == '(') {
+				if (parsesimple(pci, &contentsz, '(', ')') == 0) {
+					initchunk(c->chunkstr, contentsz, offset+i+1,
+									TYPE_ATTRIBUTE, 0, c);
+					skippedsz = contentsz + 2;
+					i += skippedsz;
+				}
+			}
+		}
 		
 		/* Parse inline elements <em>, <strong>, <code>, and <a> (TODO WIP) */
-		if (c->type == TYPE_P || (c->type >= TYPE_H1 && c->type <= TYPE_H6)) {
+		if (c->type == TYPE_P
+			|| c->type == TYPE_EM
+			|| c->type == TYPE_STRONG
+			|| (c->type >= TYPE_H1 && c->type <= TYPE_H6)
+			|| (c->type == TYPE_PLAIN && c->open == 1)) {
 			if ((*pci == '\0' || i == c->length) && i != lastwritepos) {
 				initchunk(c->chunkstr, i-lastwritepos, offset+lastwritepos,
 							TYPE_PLAIN, 0, c);
 			}
+			
+			if (*pci == '[' && i < c->length-2) {
+				if (parsesimple(pci, &contentsz, '[', ']') == 0) {
+					delimsz = contentsz+2;
+					if (parsesimple(pci+delimsz, &contentsz, 
+							'(', ')') == 0) {
+						/* if the link is preceded by a bang, check if we
+						   should be escaped (unless we're at the start of
+						   a line, then just go for it because we can't be!) */
+						if ((i == 1 && *(pci-1) == '!')
+							|| (i > 1 && *(pci-2) != '\\' && *(pci-1) == '!')) {
+							/* write content up to now into plain ChunkElement */
+							if (i != lastwritepos) {
+								initchunk(c->chunkstr, i-lastwritepos-1, 
+									offset+lastwritepos, TYPE_PLAIN, 0, c);
+								lastwritepos = i-1;
+							}
+							
+							/* write <a> ChunkElement INCLUDING '!' & skip */
+							skippedsz = delimsz + contentsz + 3;
+							initchunk(c->chunkstr, skippedsz, offset+i-1,
+								TYPE_A, 1, c);
+							i += skippedsz;
+							lastwritepos += skippedsz;
+						} else {
+							/* write content up to now into plain ChunkElement */
+							if (i != lastwritepos) {
+								initchunk(c->chunkstr, i-lastwritepos, 
+									offset+lastwritepos, TYPE_PLAIN, 0, c);
+								lastwritepos = i;
+							}
+							
+							/* write <a> ChunkElement and skip */
+							skippedsz = delimsz + contentsz + 2;
+							initchunk(c->chunkstr, skippedsz, offset+i,
+								TYPE_A, 1, c);
+							i += skippedsz;
+							lastwritepos += skippedsz;
+						}
+					}
+				}
+			}
+			
 			if (*pci == '`') {
 				if (parsesimple(pci, &contentsz, '`', '`') == 0) {
-					/* write content up to now into plaintext ChunkElement */
+					/* write content up to now into plain ChunkElement */
 					if (i != lastwritepos) {
-						initchunk(c->chunkstr, i-lastwritepos, offset+lastwritepos,
-								TYPE_PLAIN, 0, c);
+						initchunk(c->chunkstr, i-lastwritepos, 
+								offset+lastwritepos, TYPE_PLAIN, 0, c);
 						lastwritepos = i;
 					}
-					
+					/* TODO might need to SET lwp instead of incrementing? */
 					/* write ChunkElement and skip */
 					initchunk(c->chunkstr, contentsz, offset+i+1,
 							TYPE_CODE, 0, c);
@@ -281,26 +388,29 @@ ChunkElement *parsechunkelement(ChunkElement *c) {
 			
 			if (*pci == '*') {
 				if (parseasterisk(pci, &contentsz, &delimsz) == 0) {
-					/* write content up to now into plaintext ChunkElement */
-					if (i != lastwritepos) {
-						initchunk(c->chunkstr, i-lastwritepos, offset+lastwritepos,
-								TYPE_PLAIN, 0, c);
-						lastwritepos = i;
+					skippedsz = 0;
+					if ( (delimsz == 1 && c->type != TYPE_EM)
+						|| (delimsz == 2 && c->type != TYPE_STRONG) ) {
+						/* write content up to now into plain ChunkElement */
+						if (i != lastwritepos) {
+							initchunk(c->chunkstr, i-lastwritepos,
+									offset+lastwritepos, TYPE_PLAIN, 0, c);
+							lastwritepos = i;
+						}
+						
+						/* write asterisk-delimited ChunkElement and skip */
+						initchunk(c->chunkstr, contentsz, offset+i+delimsz,
+								TYPE_EM-1+delimsz, 1, c);
+						skippedsz = contentsz + 2*delimsz;
+						i += skippedsz;
+						lastwritepos += skippedsz;
 					}
-					
-					/* write asterisk-delimited ChunkElement and skip */
-					initchunk(c->chunkstr, contentsz, offset+i+delimsz,
-							TYPE_EM-1+delimsz, 1, c);
-					skippedsz = contentsz + 2*delimsz;
-					i += skippedsz;
-					lastwritepos += skippedsz;
 				}
 			}
 		}
 		
 		if (!skippedsz) {
 			i++;
-		/*	contentsz++;*/
 		}
 		skippedsz = 0;
 	}
@@ -317,8 +427,8 @@ int parsesimple(char *chunk, int *_contentsz, char delim1, char delim2) {
 	sz = strlen(chunk);
 
 	if (chunk[0] != delim1) {
-		fprintf(stderr, "\x1b[31m[chunks] [parsesimple]"
-						" string does not start with given delim\x1b[0m\n");
+/*		fprintf(stderr, "\x1b[31m[chunks] [parsesimple]"
+						" string does not start with given delim\x1b[0m\n");*/
 		return(1);
 	}
 	
@@ -337,8 +447,8 @@ int parsesimple(char *chunk, int *_contentsz, char delim1, char delim2) {
 		}
 	}
 	
-	fprintf(stderr, "\x1b[31m[chunks] [parsesimple]"
-					" reached end of string without closing\x1b[0m\n");
+/*	fprintf(stderr, "\x1b[31m[chunks] [parsesimple]"
+					" reached end of string without closing\x1b[0m\n");*/
 	return(1);
 }
 
@@ -360,6 +470,9 @@ int parseasterisk(char *chunk, int *_contentsz, int *_delimsz) {
 	sz = strlen(chunk);
 	
 	for (i = 0; i < sz; ) {
+		if (chunk[i] == '\n') {
+			return(1);
+		}
 		if (chunk[i] == '\\' && !escape) {
 			escape = 2;
 		}
@@ -432,8 +545,8 @@ int parseasterisk(char *chunk, int *_contentsz, int *_delimsz) {
 			escape--;
 		}
 	}
-	fprintf(stderr, "\x1b[31m[chunks] [parseasterisk]"
-					" reached end of string without closing\x1b[0m\n");
+/*	fprintf(stderr, "\x1b[31m[chunks] [parseasterisk]"
+					" reached end of string without closing\x1b[0m\n");*/
 	return(1);
 }
 
