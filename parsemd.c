@@ -13,7 +13,7 @@ int main() {
 	FILE *fp;
 	ChunkElement *document[32];
 	int i;
-	const char *fdir = "src/test.md";
+	const char *fdir = "src/index.md";
 	
 	if ((fp = fopen(fdir, "r")) == NULL) {
 		fprintf(stderr, "\x1b[31m[parsemd] [main]"
@@ -44,14 +44,13 @@ int main() {
 	}
 	
 	parsefile(document, 32, fp);
-/*
+
 	for (i = 0; i < 32; i++) {
 		if (document[i] != NULL) {
 			printchunktree(document[i], 0);
 		}
-		printf("---------------------------------\n");
 	}
-	*/
+	
 	/* garbage collection */
 	for (i = 0; i < 32; i++) {
 		rfree(document[i]);

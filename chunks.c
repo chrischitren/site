@@ -515,38 +515,72 @@ int countopenleaves(ChunkElement *c) {
 
 void printchunktree(ChunkElement *c, int depth) {
 	int i = 0;
-	if (c->open == 0) {
-		printf("\x1b[36m");
-	} else {
-		printf("\x1b[33m");
+	char tags[TYPE_MAXTYPE][12];
+
+	strcpy(tags[TYPE_H1], "h1");
+	strcpy(tags[TYPE_H2], "h2");
+	strcpy(tags[TYPE_H3], "h3");
+	strcpy(tags[TYPE_H4], "h4");
+	strcpy(tags[TYPE_H5], "h5");
+	strcpy(tags[TYPE_H6], "h6");
+	strcpy(tags[TYPE_IMG], "img");
+	strcpy(tags[TYPE_BLOCKQUOTE], "blockquote");
+	strcpy(tags[TYPE_PRE], "pre");
+	strcpy(tags[TYPE_UL], "ul");
+	strcpy(tags[TYPE_P], "p");
+	strcpy(tags[TYPE_LI], "li");
+	strcpy(tags[TYPE_EM], "em");
+	strcpy(tags[TYPE_STRONG], "strong");
+	strcpy(tags[TYPE_A], "a");
+	strcpy(tags[TYPE_CODE], "code");
+
+	if (c->type == TYPE_ATTRIBUTE || depth == -1) {
+		for (i = c->position; i < c->position + c->length; i++) {
+			printf("%c", *((c->chunkstr)+i));
+		}
+		return;
 	}
 	
-	printf("%*s(type=%d, ", depth*4, " ", c->type);
-	printf("open=%d) ", c->open);
+	if (c->open != 0 && c->type != TYPE_PLAIN) {
+		printf("<%s", tags[c->type]);
+		if (c->type == TYPE_IMG) {
+			printf(" src=\"");
+			printchunktree(c->children[1], -1);
+			printf("\" title=\"");
+			printchunktree(c->children[0], -1);
+			printf("\" alt=\"");
+			printchunktree(c->children[0], -1);
+			printf("\"");
+		}
+		if (c->type == TYPE_A) {
+			printf(" href=\"");
+			printchunktree(c->children[1], -1);
+			printf("\"");
+		}
+		printf(">");
+	}
+	
 	if (c->open == 0) {
-		printf("\"");
 		for (i = c->position; i < c->position + c->length; i++) {
-			if (*((c->chunkstr)+i) != '\n') {
-				printf("%c", *((c->chunkstr)+i));
-			} else {
-				putc(0xC2, stdout);
-				putc(0xB6, stdout);
+			printf("%c", *((c->chunkstr)+i));
+		}
+	}
+	if (c->type != TYPE_IMG) {
+		i = 0;
+		while (i < C_E_MAXCHILDREN) {
+			if (c->children[i] != NULL) {
+				if (c->children[i]->type != TYPE_ATTRIBUTE) {
+	/*			printf("%*s%p\n", depth*4, " ", (void *)(c->children[i]));*/
+					printchunktree(c->children[i], depth+1);
+				}
+			}
+			i++;
+		}
+		if (c->open != 0 && c->type != TYPE_PLAIN) {
+			if (c->type != TYPE_IMG) {
+				printf("</%s>", tags[c->type]);
 			}
 		}
-		printf("\"");
-	}
-	printf("\x1b[0m\n");
-	i = 0;
-	while (i < C_E_MAXCHILDREN) {
-		if (c->children[i] != NULL) {
-/*			printf("%*s%p\n", depth*4, " ", (void *)(c->children[i]));*/
-			printchunktree(c->children[i], depth+1);
-		}
-		i++;
-	}
-	if (c->open == 1) {
-		printf("\x1b[33m%*s/(type=%d, ", depth*4, " ", c->type);
-		printf("open=%d)\x1b[0m\n", c->open);
 	}
 }
 
