@@ -12,7 +12,7 @@ Right now I think that there are three parts to this project:
 
 This third stage can be handed to Cloudflare, Github, or the like, who can hopefully handle the enormous complexities of infrastructure.
 
-### The Importance of Thinking
+## The Importance of Thinking
 
 I have been grappling with this site for a while. Its growth has been partially stunted by my ignorance of C, but this is a mere challenge of comprehension. C already exists and is well documented, so it can be learned to any degree seen fit by anyone with the time and will to do so. The process that has really impeded progress is nailing down how the site ought to be shaped.
 
@@ -20,7 +20,7 @@ There are some stock ways to construct a collection of webpages. A chronology is
 
 These approaches are not mutually incompatible. A chronology can be a mess-of-pages internally, so long as each page is timestamped so that an index can be generated.
 
-### Engineering
+### Engineering 1: Despaghettification
 
 Okay, I have written 500 lines of spaghetti and only now am I beginning to understand how the thing should work. It needs two passes. The first parses to a lightweight *data structure* that is stored in RAM. This structure is a tree. (The educated reader may now laugh at how long it took me to realize that building a tree is an important step in building an HTML file.) The second pass walks along the tree, whose nodes contain pointers to the relevant content in the source files, and assembles an HTML file to a stream.
 
@@ -584,4 +584,8 @@ The most important discovery was a way to handle the dual meaning of `*`. The la
 
 I won't explain all the logic here. What I am really concerned about is whether there are any cases that have a valid way to be mapped to HTML, but for which my logic fails. I also care if there are malformed strings that produce catastrophic errors rather than just undefined behavior. 
 
+## The Importance of Doing
 
+Okay, I have written a few hundred lines of slightly less mangled code to produce trees out of markdown sections. I call these sections **chunks**: they are of a contiguous "type" and are separated by blank lines. By "of a contiguous type," I mean that all of their content can be wrapped in a single HTML tag (like `<blockquote>` or `<ul>`) without any children "not fitting in" (you would not expect an `<li>` to be a direct descendent of a `<blockquote>`).
+
+What I now require is a way to get all the chunks out of a file smoothly and quickly. I am thinking that I will read N characters into a buffer, look for all its chunks, and, if we hit the end of the buffer before the end of a chunk, we will read from the beginning of the chunk.

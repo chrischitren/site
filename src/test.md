@@ -22,9 +22,7 @@ this is one line, I suppose.
 
 Another line can come after. It is automatically separated by a linebreak when rendered.
 
-[link](/other.html)
-
-
+[link *nested*](/other.html)
 
 The desire for perfect control over style leads to bloated tools that devour energy, obfuscate intent, and `test this out`. Acceptance of a small and universal standard, and an acceptance to work *within* the standard, frees oneself from the **tyranny of minutiae.** What about an ***italic, bold element?***
 
