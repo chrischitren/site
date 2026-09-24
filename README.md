@@ -6,9 +6,9 @@ Inspired by lots of sites on the [xxiivv webring](https://webring.xxiivv.com), e
 
 Right now I think that there are three parts to this project:
 
-1. A directory of markdown files, attachments, etc. which feeds into
-2. a static site generator, to produce
-3. a directory of html and css files which comprise the actual site.
+- A directory of markdown files, attachments, etc. which feeds into
+- a static site generator, to produce
+- a directory of html and css files which comprise the actual site.
 
 This third stage can be handed to Cloudflare, Github, or the like, who can hopefully handle the enormous complexities of infrastructure.
 
@@ -97,7 +97,7 @@ If we indent the elements to see the tree structure:
 +- 4
 ```
 
-We see that our struct contains insufficient information! We must also know *where* in the parent element the new element should be inserted. (While we're editing, 256 bytes of attributes is wild for a few reasons: first, most elements have no attributes; second, our whole struct only takes up 1620 bytes; third, the URLs we need for the most common kind common kind of attribute (`href`) are already present in the markdown source!)
+We see that our struct contains insufficient information! We must also know *where* in the parent element the new element should be inserted. (While we're editing, 256 bytes of attributes is wild for a few reasons: first, most elements have no attributes; second, our whole struct only takes up 1620 bytes; third, the URLs we need for the most common kind of attribute (`href`) are already present in the markdown source!)
 
 We could indicate in each element whether it should open the html element, close it, or both; every time a new subelement is reached while building the tree, its parent is never modified again, the completion of the element is entrusted to the creation of a next sibling. **This is the wrong approach.** It destroys two of the great values of the tree structure: (1) If one node contains malformed data and can't be parsed, we can simply prune the branch, throw an error, and get on with our lives. We don't have to worry about searching the tree for the relevant siblings; (2) The nesting of the elements represented by their pointers to each other can exactly match the nesting of HTML elements. If we allowed opening- and closing-only elements, we could open a tag on one level and close it at a different level (or never, or any number of problematic things).
 
@@ -128,7 +128,7 @@ markdown is *quite* complicated! here is a [spec](https://commonmark.org/)
 |
 +- "p", start=0, end=73,
         startc=0, endc=73,
-		starta=-1, enda=-1              
+        starta=-1, enda=-1
 ```
 
 ```
@@ -178,7 +178,7 @@ Block elements start with `{'\n', '-'}` and `{'\n', '>'}`, unless it is a code b
 The most desirable solution (to me) is a kind of control-sequence-based pushing-and-popping into and out of tree nodes. This is exactly what HTML is, and it's exactly what I want markdown to be.
 
 ```
-	/*  
+	/*
 	BASIC CONTROL FLOW
 
 	when we get born:
@@ -228,13 +228,13 @@ The most desirable solution (to me) is a kind of control-sequence-based pushing-
 		HSH '#'  HaSH
         1,6      integer from {1,2,3,4,5,6}
 
-		_0_ _1_ _2_    ELEMENT START /END (MOD)     INLINE?
-		-----------    ------------------------     -------
-		NLN NLN DSH    ul, li                           
-		NLN DSH SPC    li /li                           
-		BTK ___ ___    code /code                    yes
-		AST AST ___    strong /strong                yes
-		AST ___ ___    em /em                        yes
+	    _0_ _1_ _2_    ELEMENT START /END (MOD)     INLINE?
+	    -----------    ------------------------     -------
+	    NLN NLN DSH    ul, li                           
+	    NLN DSH SPC    li /li                           
+	    BTK ___ ___    code /code                    yes
+	    AST AST ___    strong /strong                yes
+	    AST ___ ___    em /em                        yes
         SBO ___ ___    a(inner)                      yes
         SBC PBO ___    a(href)                       yes
         PBC ___ ___    /a                               
@@ -244,9 +244,9 @@ The most desirable solution (to me) is a kind of control-sequence-based pushing-
         NLN NLN ABC    blockquote                       
         NLN EXC SBO    img... erm... awkward!           
         NLN HSH 1,6    wuh? guh?                        
-        ___ ___ ___                                     
-        ___ ___ ___                                     
-        ___ ___ ___                                     
+        ___ ___ ___
+        ___ ___ ___
+        ___ ___ ___
 
 
 	This turns out to be pretty complicated. Do there exist control
@@ -286,10 +286,10 @@ Outside of a code block:
 	delimited by blank lines. Each of these is assigned a tag based on its
 	first (nonspace) character: 
 
-	# 		Heading
-	>		Block quote
-	!		Image
-	-		Unordered list
+	#       Heading
+	>       Block quote
+	!       Image
+	-       Unordered list
 
 	If the first (nonspace) character is not a control character, the chunk
 	is a <p> element alone. 
@@ -297,7 +297,7 @@ Outside of a code block:
 	These chunks are stored in a list, or perhaps processed sequentially.
 
 	The whole chunk is read into memory so we can treat it like a string.
-	This is to reduce our reading and writing time. 	
+	This is to reduce our reading and writing time.
 */
 ```
 
@@ -320,34 +320,34 @@ Document
 A collection of verbose comments that were cluttering up `builder.c`:
 
 ```
-/* 
-	FIRST PASS CHUNKS:
+/*
+    FIRST PASS CHUNKS:
 
-			Standard: 		<p>
-								text
-							</p>
-	
-	>		Blockquote:		<blockquote>
-								text
-							</blockquote>
-	
-	-		List:			<ul>
-								<li>text</li>
-							</ul>
+             Standard:      <p>
+                                text
+                            </p>
 
-	1.		Ordered list:	<ol>
-								<li>text</li>
-							</ol>
-	
-	#		Heading:		<h1>text</h1>
-							...
-							<h6>text</h6>
+    >        Blockquote:    <blockquote>
+                                text
+                            </blockquote>
 
-	!		Image:			<a href="link"><img src="link" name="text"></a>
+    -        List:          <ul>
+                                <li>text</li>
+                            </ul>
 
-	```		Code block:		<pre>
-	text						text
-	```						</pre>
+    1.       Ordered list:  <ol>
+                                <li>text</li>
+                            </ol>
+
+    #        Heading:       <h1>text</h1>
+                            ...
+                            <h6>text</h6>
+
+    !        Image:         <a href="link"><img src="link" name="text"></a>
+
+    ```      Code block:    <pre>
+    text                        text
+    ```                     </pre>
 
 */
 ```
@@ -362,7 +362,7 @@ A collection of verbose comments that were cluttering up `builder.c`:
 		Skip to the first character that is not a newline or space. 
 			Are the next three characters exactly "```"? Yes:
 				Mark the beginning of a code block.
-				Skip to the next occurrence of the sequence "```\n.
+				Skip to the next occurrence of the sequence "```\n".
 					If the end of the document is reached, end the block.
 				Mark the end of the code block.
 			No:
@@ -421,10 +421,10 @@ A collection of verbose comments that were cluttering up `builder.c`:
 	the delimiters (in order of precedence):
 
          0123         0123        01         012        01         01
-            .            .         .           .         .          .       
-		\n-...\n+    \n>...\n+    `+...`+    **...**    *+...*+    [+...)+
-		li           p            code       strong     em         a      
-		^ul          ^blockquote                                           
+            .            .         .           .         .          .
+	    \n-...\n+    \n>...\n+    `+...`+    **...**    *+...*+    [+...)+
+	    li           p            code       strong     em         a
+	    ^ul          ^blockquote
 
 	where + indicates that any character matches. It is important to check for
 	** before * because we don't want to wind up with three nested <em> tags
@@ -434,7 +434,7 @@ A collection of verbose comments that were cluttering up `builder.c`:
 	similarly our parser should *not* generate <code><em>text</em></code>.
 	Thus we must decide which elements can be matched inside which others.
 
-	         inside this,         
+	         inside this,      
 	         li p  cd st em a  
 	 a    li -- -- -- -- -- -- 
      l t   p -- -- -- -- -- -- 
@@ -499,7 +499,7 @@ A collection of verbose comments that were cluttering up `builder.c`:
 		|      |          |
 		|      |          +- see triplet; can end; skip ahead by 3-depth
 		|      |
-		|      +- cannot end depth 1 with runlength 2      
+		|      +- cannot end depth 1 with runlength 2
 		|
 		+- start with depth 1
 	
@@ -517,12 +517,12 @@ A collection of verbose comments that were cluttering up `builder.c`:
 	
 	This sucks because we have to backtrack (sort of; we can write,
 	
-		***text with** italic*
-		^^^^^^^^^^^^^^^^^^^^^
+	    ***text with** italic*
+	    ^^^^^^^^^^^^^^^^^^^^^
 	
 	to the buffer, compute that we should have consumed one, and then pass
 	*(buffer+1) as the inner string), but I don't think it's possible to avoid
-	in this case.	
+	in this case.
 */
 ```
 
