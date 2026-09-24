@@ -1,4 +1,4 @@
-gcc -c librarian.c scribe.c
-gcc librarian.o scribe.o -o _buildsite
-./_buildsite
+gcc -Wpedantic -Wall -std=c89 -c chunks.c parsemd.c
+gcc -Wpedantic -Wall -std=c89 chunks.o parsemd.o -o _run
+./_run
 find . -name "*.o" -delete

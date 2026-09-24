@@ -48,7 +48,6 @@ int scansimple(char *chunk, int *_contentsz, char delim1, char delim2);
 int scanasterisk(char *chunk, int *_contentsz, int *_delimsz);
 
 int countopenleaves(ChunkElement *c);
-void printchunktree(ChunkElement *c, int depth);
 
 ChunkElement *initchunk(char *_chunkstr, int _chunksz, int _chunkpos,
 						int _type, int _open, ChunkElement *_parent);
