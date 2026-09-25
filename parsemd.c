@@ -3,55 +3,44 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
-#include "chunks.h"
+#include "parsemd.h"
 
-#define MAX_BUFFERSZ 32768 
-#define MAX_DOCSZ 128
-
-/* load the file's contents to the stack */
-int readtobuffer(char *readdir, char *_buffer, int _buffersz);
-
-/* parsing functiosn */
-int parsefile(ChunkElement **_doc, int _docsz, char *_buffer, int _buffersz);
-int decidetype(char *_chunkstr, int _chunksz);
-
-/* write functions */
-int writedoc_html(ChunkElement **_doc, int _docsz, char *writedir);
-void writechunk_html(ChunkElement *c, FILE *_fp, int depth);
-
-/* document handling functions */
-void initdoc(ChunkElement **_doc, int _docsz);
-void freedoc(ChunkElement **_doc, int _docsz);
-
-int main() {
-
-/*	ChunkElement **doc = mdtohtml("src/test.md", "_testhtmlout.html");*/
-
+int mdtohtml(char *readdir, char *writedir) {
+	
+	int i, readsz;
 	/* everybody's got to work from the same copy of the buffer, otherwise
 	   someone might point to it, not knowing that it has been popped off the
 	   stack! */
 	char buffer[MAX_BUFFERSZ];
-	int chunksz;	
-
 	/* an array of ChunkElements in the order they appear in the .md source */
 	ChunkElement *doc[MAX_DOCSZ];
+	
 	
 	/* initialize document */
 	initdoc(doc, MAX_DOCSZ);
 	
 	/* directory string -> FILE* -> into the buffer */
-	chunksz = readtobuffer("README.md", buffer, MAX_BUFFERSZ);
-	if (chunksz == -1) { return(-1); }
+	readsz = readtobuffer(readdir, buffer, MAX_BUFFERSZ);
+	if (readsz == -1) { return(-1); }
 	
 	/* (blank document, buffer) -> into the parser! -> filled document */
-	parsefile(doc, MAX_DOCSZ, buffer, chunksz);
-
+	parsefile(doc, MAX_DOCSZ, buffer, readsz);
+	
 	/************************************************************************/
 	/* WE NOW HAVE ChunkElements THAT ALL REFERENCE buffer (SELF-CONTAINED) */
 	/************************************************************************/
 	
-	/* (document, read directory) -> [FILE*] <- writechunk_html  */
-	writedoc_html(doc, MAX_DOCSZ,  "_testhtmlout.html");
+	for (i = 0; i < MAX_DOCSZ; i++) {
+		if (doc[i] != NULL) {
+			printlinks(doc[i]);
+		}
+	}
+	
+	/* (document, read directory) -----+----- writechunk_html 
+	                                   |
+	                                   V 
+	                           FILE* at writedir              */
+	writedoc_html(doc, MAX_DOCSZ, writedir);
 	
 	/* filled document -> free all its malloc'd ChunkElements */
 	freedoc(doc, MAX_DOCSZ);
@@ -60,8 +49,26 @@ int main() {
 }
 
 
+void printlinks(ChunkElement *c) {
+	int i;
+	if (c->type == TYPE_ATTRIBUTE) {
+		for (i = c->position; i < c->position+c->length; i++) {
+			printf("%c", c->chunkstr[i]);
+		}
+		/* writechunk_html(c, stdout, -1);*/
+		printf("\n");
+	}
+	for (i = 0; i < C_E_MAXCHILDREN; i++) {
+		if (c->children[i] != NULL) {
+			printlinks(c->children[i]);
+		}
+	}
+	return;
+}
+
+
 int readtobuffer(char *readdir, char *_buffer, int _buffersz) {
-	int i, readsz;
+	int readsz;
 	FILE *rfp;
 
 	if ((rfp = fopen(readdir, "r")) == NULL) {
@@ -115,16 +122,12 @@ int parsefile(ChunkElement **_doc, int _docsz, char *_buffer, int _buffersz) {
 				if (inchunk == 1 && i > 0) {
 					if (_buffer[i] == '\n' && _buffer[i-1] == '\n') {
 						inchunk = 0;
-					/*	printf("\"\x1b[33m%.*s\x1b[0m\"",
-								 i-chunkstart-1, _buffer+chunkstart);
-						printf("%d", decidetype(_buffer+chunkstart, i-chunkstart-1));*/
 						if (di < _docsz) {
 							_doc[di] = parsechunk(_buffer+chunkstart,
 												i-chunkstart-1,
 												decidetype(_buffer+chunkstart,
 															i-chunkstart-1),
 												16);
-						/*	writechunk_html(_doc[di], 0);*/
 							di++;
 						}
 						break;
@@ -136,16 +139,12 @@ int parsefile(ChunkElement **_doc, int _docsz, char *_buffer, int _buffersz) {
 										 && _buffer[i-3] == '\n') {
 						inchunk = 0;
 						i++;
-					/*	printf("\"\x1b[33m%.*s\x1b[0m\"",
-								i-chunkstart, _buffer+chunkstart);
-						printf("%d", decidetype(_buffer+chunkstart, i-chunkstart));*/
 						if (di < _docsz) {
 							_doc[di] = parsechunk(_buffer+chunkstart+3,
 												i-chunkstart-6,
 												decidetype(_buffer+chunkstart,
 															i-chunkstart),
 												16);
-						/*	writechunk_html(_doc[di], 0);*/
 							di++;
 						}
 						break;
@@ -334,7 +333,6 @@ void writechunk_html(ChunkElement *c, FILE *_fp, int depth) {
 		while (i < C_E_MAXCHILDREN) {
 			if (c->children[i] != NULL) {
 				if (c->children[i]->type != TYPE_ATTRIBUTE) {
-	/*			fprintf(_fp, "%*s%p\n", depth*4, " ", (void *)(c->children[i]));*/
 					writechunk_html(c->children[i], _fp, depth+1);
 				}
 			}

@@ -2,7 +2,7 @@
 
 This is a repo to store the markdown sources for my personal site. I don't really know what I'm doing, but I'm trying to understand the process as a whole, so it might not work or it might be interesting.
 
-Inspired by lots of sites on the [xxiivv webring](https://webring.xxiivv.com), especially those of [Devine Lu Linvega](https://wiki.xxiivv.com/) and [Rek Bell](https://kokorobot.ca/). I wanted somewhere to link to others' work, act as a collection of my thoughts, showcase projects or creations, you get it. A million people have done it.
+Inspired by lots of sites on the [xxiivv webring](https://webring.xxiivv.com/), especially those of [Devine Lu Linvega](https://wiki.xxiivv.com/) and [Rek Bell](https://kokorobot.ca/). I wanted somewhere to link to others' work, act as a collection of my thoughts, showcase projects or creations, you get it. A million people have done it.
 
 Right now I think that there are three parts to this project:
 

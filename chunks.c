@@ -4,32 +4,6 @@
 
 #include "chunks.h"
 
-/*
-int main() {
-	char *teststr = 
-		"- this is a list item\n"
-		"containing **a *paragraph*** break\n"
-		"- followed by another *list item.*\n"
-		"- followed by a [bracketed statement] *italic* third-whoa! --\n"
-		"- followed by a [link text](linkurl) with post*infix*\n"
-		"and a new paragraph! Then \\![image text](imgurl)\n"
-		"- now a new list element. \\*escaped italic.*\n"
-		"- image: ![image *italic* text](imgurl) wow!";
-	
-	ChunkElement *testchunkroot;
-	
-	if ((testchunkroot = parsechunk(teststr, TYPE_UL, 16)) == NULL) {
-		fprintf(stderr, "\x1b[31mMAIN ERROR\x1b[0m\n");
-	}
-	
-	printchunktree(testchunkroot, 0);
-
-	rfree(testchunkroot);
-	
-	return(0);
-}
-*/
-
 ChunkElement *parsechunk(char *_chunkstr, int _chunksz, int _type, int _maxdepth) {
 	
 	ChunkElement *rt;
@@ -42,22 +16,12 @@ ChunkElement *parsechunk(char *_chunkstr, int _chunksz, int _type, int _maxdepth
 		return(NULL);
 	}
 	
-	/*
-	printf("open leaves: %d\n", countopenleaves(rt));
-	printf("parsing\n");
-	*/
-	
 	while (_maxdepth > 0 && countopenleaves(rt) > 0) {
 		parseopenleaves(rt);
 		_maxdepth--;
 	}
 	
 	finalopenleaves = countopenleaves(rt);
-	
-	/*
-	printchunktree(rt, 0);
-	printf("open leaves: %d\n", finalopenleaves);
-	*/
 	
 	if (finalopenleaves != 0) {
 		fprintf(stderr, "\x1b[31m[chunks] [parsechunk]"
@@ -311,7 +275,6 @@ ChunkElement *parsechunkelement(ChunkElement *c) {
 								offset+lastwritepos, TYPE_PLAIN, 0, c);
 						lastwritepos = i;
 					}
-					/* TODO might need to SET lwp instead of incrementing? */
 					/* write ChunkElement and skip */
 					initchunk(c->chunkstr, contentsz, offset+i+1,
 							TYPE_CODE, 1, c);
@@ -362,8 +325,8 @@ int scansimple(char *chunk, int *_contentsz, char delim1, char delim2) {
 	sz = strlen(chunk);
 
 	if (chunk[0] != delim1) {
-/*		fprintf(stderr, "\x1b[31m[chunks] [scansimple]"
-						" string does not start with given delim\x1b[0m\n");*/
+		fprintf(stderr, "\x1b[31m[chunks] [scansimple]"
+						" string does not start with given delim\x1b[0m\n");
 		return(1);
 	}
 	
@@ -382,8 +345,8 @@ int scansimple(char *chunk, int *_contentsz, char delim1, char delim2) {
 		}
 	}
 	
-/*	fprintf(stderr, "\x1b[31m[chunks] [scansimple]"
-					" reached end of string without closing\x1b[0m\n");*/
+	fprintf(stderr, "\x1b[31m[chunks] [scansimple]"
+					" reached end of string without closing\x1b[0m\n");
 	return(1);
 }
 
@@ -405,7 +368,6 @@ int scanasterisk(char *chunk, int *_contentsz, int *_delimsz) {
 	sz = strlen(chunk);
 	
 	for (i = 0; i < sz; ) {
-/*		printf("asterisk sz %d i %d c %c\n", sz, i, chunk[i]);*/
 		if (chunk[i] == '\n') {
 			return(1);
 		}
@@ -437,22 +399,18 @@ int scanasterisk(char *chunk, int *_contentsz, int *_delimsz) {
 				if (start_n < 3) {
 					if (j == start_n) {
 						*_contentsz = bi; /* w */
-/*						printf("%d, %d\n", start_n, *_delimsz);*/
 						return(0);        /* w */
 					} else if (j == 3) {
 						if (depth_e == 3) {
 							i += 3-start_n;
 							bi += 3-start_n;
 							*_contentsz = bi; /* w */
-/*							printf("%d, %d\n", start_n, *_delimsz);*/
 							return(0);        /* w */
 						} else if (depth_e < 3) {
 							*_contentsz = bi; /* w */
-/*							printf("%d, %d\n", start_n, *_delimsz);*/
 							return(0);        /* w */
 						} else {
 							return(1);
-/*							printf("\x1b[35m%d, %d, %d\x1b[0m", depth_e, start_n, j);*/
 						}
 					} else {
 						depth_e += j;
@@ -463,14 +421,14 @@ int scanasterisk(char *chunk, int *_contentsz, int *_delimsz) {
 					if (j == 3) {
 						i += 2;
 						bi += 2;
-						*_delimsz = 1;    /* w */
+						*_delimsz = 1;      /* w */
 						*_contentsz = bi-1; /* w */
-						return(0);        /* w */
+						return(0);          /* w */
 					} else {
 						if (depth_e-j <= 0) {
-							*_delimsz = j;    /* w */
+							*_delimsz = j;      /* w */
 							*_contentsz = bi-j; /* w */
-							return(0);        /* w */
+							return(0);          /* w */
 						} else {
 							depth_e -= j;
 							i += j;
@@ -487,8 +445,8 @@ int scanasterisk(char *chunk, int *_contentsz, int *_delimsz) {
 			escape--;
 		}
 	}
-/*	fprintf(stderr, "\x1b[31m[chunks] [scanasterisk]"
-					" reached end of string without closing\x1b[0m\n");*/
+	fprintf(stderr, "\x1b[31m[chunks] [scanasterisk]"
+					" reached end of string without closing\x1b[0m\n");
 	return(1);
 }
 
