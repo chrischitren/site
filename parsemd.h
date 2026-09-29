@@ -7,25 +7,36 @@
 
 #define MAX_BUFFERSZ 32768 
 #define MAX_DOCSZ 128
+#define MAX_LINKS 64
 
-/* read an md file located at readdir and write and html file to writedir */
-int mdtohtml(char *readdir, char *writedir);
+#ifndef MAXDIR
+#define MAXDIR 256
+#endif
 
-/* load the file's contents to the stack */
+typedef struct _documenttype Document;
+
+struct _documenttype {
+	ChunkElement *chunklist[MAX_DOCSZ];
+	int chunklistlen;
+	char buffer[MAX_BUFFERSZ];
+	int bufferlen;
+	char outlinks[MAX_LINKS][MAXDIR];
+	int outlinkslen;
+};
+
+/* Document handling functions */
+int readdoc_md(Document *_doc, char *readdir);
+int writedoc_html(Document *_doc, char *writedir);
+void freedoc(Document *_doc);
+
+/* Internal functions */
 int readtobuffer(char *readdir, char *_buffer, int _buffersz);
-
-/* parsing functiosn */
-int parsefile(ChunkElement **_doc, int _docsz, char *_buffer, int _buffersz);
+int parsefile(ChunkElement **_chunklist, int _chunklistsz,
+												char *_buffer, int _buffersz);
 int decidetype(char *_chunkstr, int _chunksz);
-
-/* write functions */
-int writedoc_html(ChunkElement **_doc, int _docsz, char *writedir);
 void writechunk_html(ChunkElement *c, FILE *_fp, int depth);
 
-/* document handling functions */
-void initdoc(ChunkElement **_doc, int _docsz);
-void freedoc(ChunkElement **_doc, int _docsz);
-
-void printlinks(ChunkElement *c);
+void populateoutlinks(Document *_doc); 
+int graboutlinks(ChunkElement *c, Document *_doc, int *oli);
 
 #endif

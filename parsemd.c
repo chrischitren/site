@@ -5,67 +5,130 @@
 
 #include "parsemd.h"
 
-int mdtohtml(char *readdir, char *writedir) {
-	
-	int i, readsz;
-	/* everybody's got to work from the same copy of the buffer, otherwise
-	   someone might point to it, not knowing that it has been popped off the
-	   stack! */
-	char buffer[MAX_BUFFERSZ];
-	/* an array of ChunkElements in the order they appear in the .md source */
-	ChunkElement *doc[MAX_DOCSZ];
-	
-	
-	/* initialize document */
-	initdoc(doc, MAX_DOCSZ);
-	
-	/* directory string -> FILE* -> into the buffer */
-	readsz = readtobuffer(readdir, buffer, MAX_BUFFERSZ);
-	if (readsz == -1) { return(-1); }
-	
-	/* (blank document, buffer) -> into the parser! -> filled document */
-	parsefile(doc, MAX_DOCSZ, buffer, readsz);
-	
-	/************************************************************************/
-	/* WE NOW HAVE ChunkElements THAT ALL REFERENCE buffer (SELF-CONTAINED) */
-	/************************************************************************/
-	
+/*****************************************************************************
+                         DOCUMENT HANDLING FUNCTIONS
+The librarian will be expected to create Document objects and initilize them
+using readdoc_md, which populates all relevant fields and builds ChunkElement
+trees to represent the document structure.
+*****************************************************************************/
+
+int readdoc_md(Document *_doc, char *readdir) {
+	int i;
 	for (i = 0; i < MAX_DOCSZ; i++) {
-		if (doc[i] != NULL) {
-			printlinks(doc[i]);
-		}
+		_doc->chunklist[i] = NULL;
 	}
+
+	for (i = 0; i < MAX_LINKS; i++) {
+		_doc->outlinks[i][0] = '\0';
+	}
+
 	
-	/* (document, read directory) -----+----- writechunk_html 
-	                                   |
-	                                   V 
-	                           FILE* at writedir              */
-	writedoc_html(doc, MAX_DOCSZ, writedir);
+
+	/* directory string -> FILE* -> into the buffer */
+	_doc->bufferlen = readtobuffer(readdir, _doc->buffer, MAX_BUFFERSZ);
+	if (_doc->bufferlen == -1) {
+		return(-1);
+	}
+
+	/* (blank document, buffer) -> into the parser! -> filled document */
+	parsefile(_doc->chunklist, MAX_DOCSZ,
+				 _doc->buffer, _doc->bufferlen);
 	
-	/* filled document -> free all its malloc'd ChunkElements */
-	freedoc(doc, MAX_DOCSZ);
+	populateoutlinks(_doc);
+
+	/* we now have a document that contains:
+	    a list of root ChunkElement nodes, and
+	    a buffer holding the Markdown these all reference. */
 	
 	return(0);
 }
 
-
-void printlinks(ChunkElement *c) {
+int writedoc_html(Document *_doc, char *writedir) {
 	int i;
-	if (c->type == TYPE_ATTRIBUTE) {
-		for (i = c->position; i < c->position+c->length; i++) {
-			printf("%c", c->chunkstr[i]);
+	FILE *wfp;
+	struct stat st;
+
+	if (stat(writedir, &st) == 0) {
+		fprintf(stderr, "\x1b[31m[parsemd] [writedoc_html]"
+						" refusing to overwrite \"%s\"\x1b[0m\n",
+						writedir);
+		return(1);
+	}
+	
+	if ((wfp = fopen(writedir, "a")) == NULL) {
+		fprintf(stderr, "\x1b[31m[parsemd] [writedoc_html]"
+						" failed to open file %s\x1b[0m\n", writedir);
+		return(1);
+	}
+
+	fputs(
+	"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+	"<meta charset=\"UTF-8\">\n<title>chrischitren</title>\n"
+	"<link rel=\"icon\" type=\"image/png\" href=\"/images/favicon_32.png\">\n"
+	"<link rel=\"stylesheet\" href=\"main.css\">\n</head>\n<body>",
+	wfp);
+	
+	for (i = 0; i < MAX_DOCSZ; i++) {
+		if (_doc->chunklist[i] != NULL) {
+			writechunk_html(_doc->chunklist[i], wfp, 0);
 		}
-		/* writechunk_html(c, stdout, -1);*/
-		printf("\n");
+	}
+
+	fputs("</body>\n</html>", wfp);
+	
+	fclose(wfp);
+	return(0);
+}
+
+
+void freedoc(Document *_doc) {
+	int i;
+	for (i = 0; i < MAX_DOCSZ; i++) {
+		rfree(_doc->chunklist[i]);
+	}
+}
+
+/*****************************************************************************
+                              INTERNAL FUNCTIONS
+*****************************************************************************/
+
+
+void populateoutlinks(Document *_doc) {
+	int i;
+	int oli = 0;
+	for (i = 0; i < MAX_DOCSZ; i++) {
+		if (_doc->chunklist[i] != NULL) {
+			graboutlinks(_doc->chunklist[i], _doc, &oli);
+		}
+	}
+}
+
+int graboutlinks(ChunkElement *c, Document *_doc, int *oli) {
+	int i;
+	
+	if (*oli >= MAX_LINKS) {
+		return(1);
+	}
+	
+	if (c->type == TYPE_ATTRIBUTE && c->open == 0) {
+		for (i = 0; i<(c->length) && i<MAXDIR-1; i++) {
+			_doc->outlinks[*oli][i] = *((c->chunkstr)+c->position+i);
+		}
+		_doc->outlinks[*oli][i] = '\0';
+		if (strstr(_doc->outlinks[*oli], "//") == NULL) {
+			if (strstr(_doc->outlinks[*oli], ".md") != NULL) {
+				strcpy(strstr(_doc->outlinks[*oli], ".md"), ".html");
+			}
+		}
+		*oli += 1;
 	}
 	for (i = 0; i < C_E_MAXCHILDREN; i++) {
 		if (c->children[i] != NULL) {
-			printlinks(c->children[i]);
+			graboutlinks(c->children[i], _doc, oli);
 		}
 	}
-	return;
+	return(0);
 }
-
 
 int readtobuffer(char *readdir, char *_buffer, int _buffersz) {
 	int readsz;
@@ -96,7 +159,8 @@ int readtobuffer(char *readdir, char *_buffer, int _buffersz) {
 }
 
 
-int parsefile(ChunkElement **_doc, int _docsz, char *_buffer, int _buffersz) {
+int parsefile(ChunkElement **_chunklist, int _chunklistsz,
+								char *_buffer, int _buffersz) {
 	int di = 0;
 	int i = 0;
 	int inchunk = 0;
@@ -122,8 +186,8 @@ int parsefile(ChunkElement **_doc, int _docsz, char *_buffer, int _buffersz) {
 				if (inchunk == 1 && i > 0) {
 					if (_buffer[i] == '\n' && _buffer[i-1] == '\n') {
 						inchunk = 0;
-						if (di < _docsz) {
-							_doc[di] = parsechunk(_buffer+chunkstart,
+						if (di < _chunklistsz) {
+							_chunklist[di] = parsechunk(_buffer+chunkstart,
 												i-chunkstart-1,
 												decidetype(_buffer+chunkstart,
 															i-chunkstart-1),
@@ -139,8 +203,8 @@ int parsefile(ChunkElement **_doc, int _docsz, char *_buffer, int _buffersz) {
 										 && _buffer[i-3] == '\n') {
 						inchunk = 0;
 						i++;
-						if (di < _docsz) {
-							_doc[di] = parsechunk(_buffer+chunkstart+3,
+						if (di < _chunklistsz) {
+							_chunklist[di] = parsechunk(_buffer+chunkstart+3,
 												i-chunkstart-6,
 												decidetype(_buffer+chunkstart,
 															i-chunkstart),
@@ -184,34 +248,6 @@ int decidetype(char *_chunkstr, int _chunksz) {
 }
 
 
-int writedoc_html(ChunkElement **_doc, int _docsz, char *writedir) {
-	int i;
-	FILE *wfp;
-	struct stat st;
-
-	if (stat(writedir, &st) == 0) {
-		fprintf(stderr, "\x1b[31m[parsemd] [writedoc_html]"
-						" refusing to overwrite \"%s\", exiting\x1b[0m\n",
-						writedir);
-		return(1);
-	}
-	
-	if ((wfp = fopen(writedir, "a")) == NULL) {
-		fprintf(stderr, "\x1b[31m[parsemd] [writedoc_html]"
-						" failed to open file %s\x1b[0m\n", writedir);
-		return(1);
-	}
-	
-	for (i = 0; i < _docsz; i++) {
-		if (_doc[i] != NULL) {
-			writechunk_html(_doc[i], wfp, 0);
-		}
-	}
-	
-	fclose(wfp);
-	return(0);
-}
-
 
 void writechunk_html(ChunkElement *c, FILE *_fp, int depth) {
 	int i = 0;
@@ -246,7 +282,7 @@ void writechunk_html(ChunkElement *c, FILE *_fp, int depth) {
 				}
 				if (!pathisurl) {
 					if (*((c->chunkstr)+i) == '.'
-							&& i < (c->position) + (c->length) - 3) {
+							&& i < (c->position) + (c->length) - 2) {
 						if (*((c->chunkstr)+i+1) == 'm'
 								&& *((c->chunkstr)+i+2) == 'd') {
 							fprintf(_fp, "%s", ".html");
@@ -347,18 +383,5 @@ void writechunk_html(ChunkElement *c, FILE *_fp, int depth) {
 }
 
 
-void initdoc(ChunkElement **_doc, int _docsz) {
-	int i;
-	for (i = 0; i < _docsz; i++) {
-		_doc[i] = NULL;
-	}
-}
 
 
-void freedoc(ChunkElement **_doc, int _docsz) {
-	int i;
-	/* garbage collection */
-	for (i = 0; i < MAX_DOCSZ; i++) {
-		rfree(_doc[i]);
-	}
-}

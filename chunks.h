@@ -1,6 +1,6 @@
 #ifndef CHUNKS_H
 #define CHUNKS_H
-#define C_E_MAXCHILDREN 12
+#define C_E_MAXCHILDREN 24
 
 enum _cetype {
 	TYPE_ATTRIBUTE = -1,

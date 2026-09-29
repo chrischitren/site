@@ -589,3 +589,19 @@ I won't explain all the logic here. What I am really concerned about is whether 
 Okay, I have written a few hundred lines of slightly less mangled code to produce trees out of markdown sections. I call these sections **chunks**: they are of a contiguous "type" and are separated by blank lines. By "of a contiguous type," I mean that all of their content can be wrapped in a single HTML tag (like `<blockquote>` or `<ul>`) without any children "not fitting in" (you would not expect an `<li>` to be a direct descendent of a `<blockquote>`).
 
 What I now require is a way to get all the chunks out of a file smoothly and quickly. I am thinking that I will read N characters into a buffer, look for all its chunks, and, if we hit the end of the buffer before the end of a chunk, we will read from the beginning of the chunk.
+
+An update from the future: this is a point where I leaned on the crutch of resource surplus. I loaded the entire file into a buffer because it seemed reasonable in light of my decision to store *positions and lengths* of content strings (rather than the strings themselves) in the ChunkElement struct. It was a moment of laziness, I'll admit. Either way, the chunking and parsing works to a certain degree now. I managed to generate body HTML from the five sample files I'd thrown together (and this one!) in the early stages of the project, and they don't exhibit any egregious errors. Very nice!
+
+The next components of the project are navigation sections. These are templated and filled with content from the site's structure; I have two that I demand:
+
+First, at the top of the page there should be a hierarchical outline of the nearby pages. The four canonical options, `top/up/next/previous`, constitute a classic design that is terrible. I don't expect networked content to be sequential unless it is explicitly designed to be, and in this case I conceive of the content as one object that just so happens to be distributed between several screens. Moving linearly through these screens should be an easily distinguished feature of this unified multipage object, not an implicit axiom of the substrate it lives in. The Wiki style of each page's "position" being dynamically determined by its relation to others in the global structure (as opposed to a predetermined index, hierarchy, etc.) is appealing, but difficult to navigate for a site with idiosyncratic, rather than general, knowledge. Perhaps this is a deficiency in my link density.
+
+To get back to the point at hand, there should be some kind of global means to escape the current page and find another. The design must be very human. A good start might be **categories** determined by the **directories** each Markdown file lives in.
+
+Second, at the bottom of the page there ought to be a list of "pages that link here." I always like this because it's something that printed matter has trouble handling. You can't go back to your past publications and append a "works that later cited this one" page.
+
+### Abstraction of the Document
+
+We need to refactor `parsemd` to include a struct called `Document` that contains a `ChunkElement** chunks` and the `char *buffer` referenced by these chunks. Unfortunately we lacked the foresight to do this at the beginning, but the `librarian` needs to have access to document manipulation routines (like actually building it, getting its links, printing it to HTML, etc.) without having to re-instantiate the same document for each operation.
+
+

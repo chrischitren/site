@@ -10,17 +10,33 @@
 #include <unistd.h>
 
 #include "librarian.h"
+#include "chunks.h"
 #include "parsemd.h"
 
 int main() {
+	int i, j;
 	char mdfiledir[MAXDIR];
 	char htmlfiledir[MAXDIR];
+	char srclist[MAX_LINKS][MAXDIR];
 	struct stat st;
 	FILE *ifp;
 	const char *writepath = "html2";
+	Document doc;
 	
 	
-	ifp = makemdindex("_index.txt", "src");
+	
+	ifp = makemdindex("_index.txt", ".");
+	
+	i = 0;
+	while (fgets(srclist[i], MAXDIR, ifp) != NULL) {
+		srclist[i][strcspn(srclist[i], "\n")] = '\0';
+		strcpy(srclist[i], strrchr(srclist[i], '/'));
+		strcpy(strstr(srclist[i], ".md"), ".html");
+		i++;
+	}
+	srclist[i][0] = '\0';
+	rewind(ifp);
+	i = 0;
 		
 	if(stat(writepath, &st) == 0) {
 		printf("[librarian] write path \"%s\" already exists", writepath);
@@ -37,22 +53,44 @@ int main() {
 		printf("[librarian] making directory \"%s\"\n", writepath);
 		mkdir(writepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	}
+
+	
 	
 	while (fgets(mdfiledir, MAXDIR, ifp) != NULL) {
 		mdfiledir[strcspn(mdfiledir, "\n")] = '\0';
-		printf("\x1b[33m%s\x1b[0m\n", mdfiledir);
+		printf("\n\x1b[33m%s\x1b[0m\n", mdfiledir);
 
 		strcpy(htmlfiledir, writepath);
 		strcat(htmlfiledir, strrchr(mdfiledir, '/'));
 		strcpy(strstr(htmlfiledir, ".md"), ".html");
-		printf(" -> \x1b[33m%s\x1b[0m\n\n", htmlfiledir);
+		printf(" -> \x1b[33m%s\x1b[0m\n", htmlfiledir);
 
-		mdtohtml(mdfiledir, htmlfiledir);
+		readdoc_md(&doc, mdfiledir);
+		for (i = 0; i < MAX_LINKS; i++) {
+			if (doc.outlinks[i][0] != '\0') {
+				if (strstr(doc.outlinks[i], "//") == NULL) {
+					printf("\x1b[35m%s\x1b[0m\n", doc.outlinks[i]);
+					j = 0;
+					while (srclist[j][0] != '\0') {
+						printf("\t\x1b[35m%s\x1b[0m\n", srclist[j]);
+						j++;
+					}
+				} else {
+					printf("\x1b[34m%s\x1b[0m\n", doc.outlinks[i]);
+				}
+			}
+		}
+		
+		writedoc_html(&doc, htmlfiledir);
+		freedoc(&doc);
+		
 	}
 	
 	fclose(ifp);
 	return(0);
 }
+
+
 
 
 /*  Wrapper for walkfiles that only requires two arguments, [filename]
@@ -79,7 +117,7 @@ FILE *makemdindex(char *filename, char *srcdir) {
 	
 	rewind(index);
 	
-	chdir(workingdir);	
+	chdir(workingdir);
 
 	return(index);
 }
@@ -118,6 +156,9 @@ void walkfiles(char *dir, char *ext, char *parent, FILE *writefile) {
 				walkfiles(entry->d_name, ext, reldir, writefile);
 			}
 		} else {
+			if (entry->d_name[0] == '.') {
+				continue;
+			}
 			if (strstr(entry->d_name, ext)) {
 				fprintf(writefile, "%s/%s\n", parent, entry->d_name);
 			}
