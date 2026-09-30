@@ -1,3 +1,5 @@
+root: [README](/README.md)
+
 # The Librarian
 
 The `librarian` handles the interface between the filesystem and the program's data structures. **Its work consists of five sequential tasks:**
@@ -26,16 +28,16 @@ This is not to say that the user needs to preempt the flattening. You can be as 
 
 Now that we know where all our source material resides, we can make something structured of it. We wrote some (rather bad) routines to parse files into `ChunkElement` trees and collate those trees' root nodes into `Document` structs. What the `librarian` really wants is a black box that converts Markdown into HTML, and that's basically what I've given it, but with some dodgy pointer arithmetic and a poor dependency structure to work around. (I would call the dialect of Markdown it recognizes `monkdown`, since it is ascetic, isolated, and makes a lot of *a priori* judgements about what parts of Markdown are important.)
 
-Regardless of the parser's idiosyncrasies, the next task will require that we find all the documents' links. The parser can help us with this by building a list of links as it encounters them while growing its trees (smart, efficient, elegant), or we can do a slapdash search through the entire `Document` right at the end because we didn't plan very well (we can call this something fancy-sounding, like "strongly layered abstraction", and claim that it's important to make sure the parser only has one job).
+## 3. Building Navigation Tables
 
-## 3. Validating Link Structure
+The `librarian` needs to have all the source files parsed before it can know how to make navigation tables... or does it? It does. We can easily build the hierarchical header navigation tables from the directory structure of the index, but we can't know what pages link to the current one until we've parsed them all. 
+
+## 4. Calling the Scribe
+
+
+
+## 5. Validating Link Structure
+
+This task will require that we find all the documents' links. The parser can help us with this by building lists of links as it encounters them in growing its trees (smart, efficient, elegant), or we can do a slapdash search through the entire `Document` right at the end because we didn't plan very well (we can call this something fancy-sounding, like "strongly layered abstraction", and claim that it's important to make sure the parser only has one job).
 
 Now that we've acquired a list of all the links in each file, we just need to make a matrix! The element `linkmatrix[i][j]` corresponds to whether the file with index `i` links to the file with index `j`, being one if it does and zero otherwise. 
-
-## 4. Building Navigation Tables
-
-
-
-## 5. Calling the Scribe
-
-Again, we have to unfortunately come face-to-face with 

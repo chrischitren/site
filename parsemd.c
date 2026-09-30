@@ -67,12 +67,14 @@ int writedoc_html(Document *_doc, char *writedir) {
 	"<link rel=\"icon\" type=\"image/png\" href=\"/images/favicon_32.png\">\n"
 	"<link rel=\"stylesheet\" href=\"main.css\">\n</head>\n<body>",
 	wfp);
-	
+
+	fputs("\n<main>\n", wfp);
 	for (i = 0; i < MAX_DOCSZ; i++) {
 		if (_doc->chunklist[i] != NULL) {
 			writechunk_html(_doc->chunklist[i], wfp, 0);
 		}
 	}
+	fputs("\n</main>\n", wfp);
 
 	fputs("</body>\n</html>", wfp);
 	

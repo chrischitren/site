@@ -14,30 +14,32 @@
 #include "parsemd.h"
 
 int main() {
-	int i, j;
+	int i, j, wi;
+	char *wptr;
 	char mdfiledir[MAXDIR];
 	char htmlfiledir[MAXDIR];
 	char srclist[MAX_LINKS][MAXDIR];
 	struct stat st;
 	FILE *ifp;
+	char *readpath = ".";
 	const char *writepath = "html2";
 	Document doc;
 	
 	
-	
-	ifp = makemdindex("_index.txt", ".");
+	ifp = makemdindex("_index.txt", readpath);
 	
 	i = 0;
 	while (fgets(srclist[i], MAXDIR, ifp) != NULL) {
 		srclist[i][strcspn(srclist[i], "\n")] = '\0';
-		strcpy(srclist[i], strrchr(srclist[i], '/'));
+		
 		strcpy(strstr(srclist[i], ".md"), ".html");
 		i++;
 	}
 	srclist[i][0] = '\0';
 	rewind(ifp);
 	i = 0;
-		
+	
+	/* Checking if directory exists */	
 	if(stat(writepath, &st) == 0) {
 		printf("[librarian] write path \"%s\" already exists", writepath);
 		if (S_ISDIR(st.st_mode) == 0) {
@@ -54,8 +56,7 @@ int main() {
 		mkdir(writepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	}
 
-	
-	
+	/* Writing  */
 	while (fgets(mdfiledir, MAXDIR, ifp) != NULL) {
 		mdfiledir[strcspn(mdfiledir, "\n")] = '\0';
 		printf("\n\x1b[33m%s\x1b[0m\n", mdfiledir);
@@ -66,20 +67,48 @@ int main() {
 		printf(" -> \x1b[33m%s\x1b[0m\n", htmlfiledir);
 
 		readdoc_md(&doc, mdfiledir);
-		for (i = 0; i < MAX_LINKS; i++) {
-			if (doc.outlinks[i][0] != '\0') {
-				if (strstr(doc.outlinks[i], "//") == NULL) {
-					printf("\x1b[35m%s\x1b[0m\n", doc.outlinks[i]);
-					j = 0;
-					while (srclist[j][0] != '\0') {
-						printf("\t\x1b[35m%s\x1b[0m\n", srclist[j]);
-						j++;
+		
+		i = 0;
+		while (doc.outlinks[i][0] != '\0') {
+			if (strstr(doc.outlinks[i], "//") == NULL) {
+				printf("  %s\n", strrchr(doc.outlinks[i], '/')+1);
+				j = 0;
+				while (srclist[j][0] != '\0') {
+					if (strcmp( strrchr(srclist[j], '/')+1,
+					            strrchr(doc.outlinks[i], '/')+1) == 0) {
+						printf("\x1b[32m found \"%s\"\x1b[0m\n", srclist[j]);
+						j = -1;
+						break;
 					}
-				} else {
-					printf("\x1b[34m%s\x1b[0m\n", doc.outlinks[i]);
+					wi = 0;
+					wptr = srclist[j];
+					printf("     %s", readpath);
+					while ((wptr = strchr(wptr, '/')) != NULL) {
+						/*wi = wi << 8;
+						for (; (wi & 255) < (wi >> 8); wi++) { printf("/"); }
+						wi = wi >> 8;*/
+						wptr++;
+						if (strchr(wptr, '/') == NULL) {
+							printf("/\x1b[36m");
+						} else {
+							printf("/\x1b[34m");
+						}
+						printf("%.*s\x1b[0m",
+								(int) strcspn(wptr, "/"), wptr);
+					}
+					printf("\n");
+					j++;
+				}
+				if (j != -1) {
+					printf("\x1b[31m[librarian]"
+							" broken link in \"%s\": \"%s\"\x1b[0m\n",
+							mdfiledir, doc.outlinks[i]);
 				}
 			}
+			i++;
 		}
+
+		
 		
 		writedoc_html(&doc, htmlfiledir);
 		freedoc(&doc);
@@ -91,6 +120,9 @@ int main() {
 }
 
 
+/* It could be so beautiful. It is so beautiful. We have to bring its elegant
+   form into existence, to solidify the ephemeral flutterings-through. */
+ 
 
 
 /*  Wrapper for walkfiles that only requires two arguments, [filename]
