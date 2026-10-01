@@ -22,7 +22,7 @@ this is one line, I suppose.
 
 Another line can come after. It is automatically separated by a linebreak when rendered.
 
-[link *nested*](/other.html)
+[link *nested*](/notes/librarian_notes.md)
 
 The desire for perfect control over style leads to bloated tools that devour energy, obfuscate intent, and `test this out`. Acceptance of a small and universal standard, and an acceptance to work *within* the standard, frees oneself from the **tyranny of minutiae.** What about an ***italic, bold element?***
 
@@ -37,7 +37,7 @@ test here...
 - test one . . .
 - test two... this one is shorter.
 
-- test three. no way... [text](/inlink.md)
+- test three. no way... [text](/index.md)
 
 - That's crazy. you can put a p anywhere.
 you can put it anywhere!!!

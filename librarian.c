@@ -14,30 +14,40 @@
 #include "parsemd.h"
 
 int main() {
-	int i, j, wi;
-	char *wptr;
-	char mdfiledir[MAXDIR];
-	char htmlfiledir[MAXDIR];
-	char srclist[MAX_LINKS][MAXDIR];
+	int i, j, k, matchcount, nfiles;
+	
 	struct stat st;
-	FILE *ifp;
-	char *readpath = ".";
-	const char *writepath = "html2";
+	
+	char *readpath = "src";
+	char srclist[MAX_LINKS][MAXDIR];
+	
+	char *writepath = "html";
+	char outlist[MAX_LINKS][MAXDIR];
+	
+	int edgematrix[MAX_LINKS][MAX_LINKS];
+
 	Document doc;
+
+/* HTML header? */
+/*	fputs(
+	"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+	"<meta charset=\"UTF-8\">\n<title>chrischitren</title>\n"
+	"<link rel=\"icon\" type=\"image/png\" href=\"/images/favicon_32.png\">\n"
+	"<link rel=\"stylesheet\" href=\"main.css\">\n</head>\n<body>",
+	wfp);*/
 	
-	
-	ifp = makemdindex("_index.txt", readpath);
-	
-	i = 0;
-	while (fgets(srclist[i], MAXDIR, ifp) != NULL) {
-		srclist[i][strcspn(srclist[i], "\n")] = '\0';
-		
-		strcpy(strstr(srclist[i], ".md"), ".html");
-		i++;
+/*	if (readpath[strlen(readpath)-1] == '/') {
+		fprintf(stderr, "\x1b[31m[librarian]"
+						" source dir \"%s\" has trailing slash\x1b[0m\n",
+						readpath);
+		return(1);
+	}*/
+
+	for (i = 0; i < MAX_LINKS; i++) {
+		for (j = 0; j < MAX_LINKS; j++) {
+			edgematrix[i][j] = 0;
+		}
 	}
-	srclist[i][0] = '\0';
-	rewind(ifp);
-	i = 0;
 	
 	/* Checking if directory exists */	
 	if(stat(writepath, &st) == 0) {
@@ -56,7 +66,97 @@ int main() {
 		mkdir(writepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	}
 
-	/* Writing  */
+	/* build an index of the source directory, including *all* files */
+	buildindex(srclist, readpath);
+	for (i = 0; i < MAX_LINKS; i++) {
+		outlist[i][0] = '\0';
+	}
+	
+	/* build output paths for markdown files that need to get parsed */
+	i = 0;
+	while (srclist[i][0] != '\0' && i < MAX_LINKS) {
+		strcpy(outlist[i], writepath);
+		if (writepath[strlen(writepath)-1] != '/') {
+			strcat(outlist[i], "/");
+		}
+		strcat(outlist[i], strrchr(srclist[i], '/')+1);
+		if (strstr(srclist[i], ".md") != NULL) {
+			strcpy(strstr(outlist[i], ".md"), ".html");
+		}
+		i++;
+	}
+
+	nfiles = i;
+	
+	/**************  printing for testing  *****************/
+	printf("\n%-*s->  OUTPUT DESTINATION\n", 32, "SOURCE FILE FOUND");
+	printf("------------------------------------------------------\n");
+	i = 0;
+	while (srclist[i][0] != '\0' && i < MAX_LINKS) {
+		printf("%s", srclist[i]);
+		if (outlist[i][0] != '\0') {
+			printf("%*s->  \x1b[33m%s\x1b[0m",
+					(int) (32-strlen(srclist[i])), "", outlist[i]);
+		}
+		printf("\n");
+		i++;
+	} 
+	printf("\n");
+	/*******************************************************/
+
+	/* We now have a list of input and output files. The next step is to
+	   parse the markdown documents and record their outgoing link lists. */
+	for (i = 0; i < MAX_FILES; i++) {
+		if (strstr(srclist[i], ".md") != NULL) {
+			printf("\x1b[36mparsing \"%s\" (\x1b[33m\"%s\"\x1b[36m)\x1b[0m\n",
+				srclist[i], outlist[i]);
+			readdoc_md(&doc, srclist[i]);
+			writedoc_html(&doc, outlist[i]);
+			j = 0;
+			while (doc.outlinks[j][0] != '\0') {
+				if (strstr(doc.outlinks[j], "//") != NULL) {
+					printf("  \x1b[34m%s\x1b[0m\n", doc.outlinks[j]);
+				} else {
+					matchcount = 0;
+					printf("  %s", strrchr(doc.outlinks[j], '/'));
+					for (k = 0; k < MAX_FILES; k++) {
+						if (outlist[k][0] != '\0') {
+							if (strcmp(strrchr(outlist[k], '/'),
+							           strrchr(doc.outlinks[j], '/')) == 0) {
+								matchcount++;
+							}
+						}
+					}
+					if (matchcount == 0) {
+						printf("\x1b[31m FILE NOT FOUND!!!\x1b[0m");
+					} else if (matchcount > 1) {
+						printf("\x1b[31m NAME COLLISION!!!\x1b[0m");
+					} else {
+						printf("\x1b[32m one match found\x1b[0m");
+						/* edgematrix[i][j] = 1
+						     =>  file i contains link to file j */
+						edgematrix[i][j] = 1;
+					}
+					printf("\n");
+				}
+				j++;
+			}
+			freedoc(&doc);
+			printf("\n");
+		}
+	}
+	
+	for (i = 0; i < nfiles; i++) {
+		for (j = 0; j < nfiles; j++) {
+			/* edgematrix[i][j] = 1  =>  file i contains link to file j */
+			printf("%d ", edgematrix[i][j]);
+		}
+		printf("\n");
+	}
+	
+
+	/* Writing
+	i = 0;
 	while (fgets(mdfiledir, MAXDIR, ifp) != NULL) {
 		mdfiledir[strcspn(mdfiledir, "\n")] = '\0';
 		printf("\n\x1b[33m%s\x1b[0m\n", mdfiledir);
@@ -76,27 +176,11 @@ int main() {
 				while (srclist[j][0] != '\0') {
 					if (strcmp( strrchr(srclist[j], '/')+1,
 					            strrchr(doc.outlinks[i], '/')+1) == 0) {
-						printf("\x1b[32m found \"%s\"\x1b[0m\n", srclist[j]);
+						printf("\x1b[32m    found \"%s\"\x1b[0m\n", 
+								srclist[j]);
 						j = -1;
 						break;
 					}
-					wi = 0;
-					wptr = srclist[j];
-					printf("     %s", readpath);
-					while ((wptr = strchr(wptr, '/')) != NULL) {
-						/*wi = wi << 8;
-						for (; (wi & 255) < (wi >> 8); wi++) { printf("/"); }
-						wi = wi >> 8;*/
-						wptr++;
-						if (strchr(wptr, '/') == NULL) {
-							printf("/\x1b[36m");
-						} else {
-							printf("/\x1b[34m");
-						}
-						printf("%.*s\x1b[0m",
-								(int) strcspn(wptr, "/"), wptr);
-					}
-					printf("\n");
 					j++;
 				}
 				if (j != -1) {
@@ -112,47 +196,84 @@ int main() {
 		
 		writedoc_html(&doc, htmlfiledir);
 		freedoc(&doc);
-		
-	}
-	
-	fclose(ifp);
+	} */
 	return(0);
 }
 
 
 /* It could be so beautiful. It is so beautiful. We have to bring its elegant
    form into existence, to solidify the ephemeral flutterings-through. */
- 
 
-
-/*  Wrapper for walkfiles that only requires two arguments, [filename]
-    for the index and [srcdir] for the directory to walk. Assumes that
-    we are looking for markdown files. */
-FILE *makemdindex(char *filename, char *srcdir) {
-	
+/* Read the source directory and find all the files. Write their paths
+   to pointers in an array. */
+void buildindex(char _index[MAX_FILES][MAXDIR], char *srcdir) {
 	char workingdir[MAXDIR];
-	FILE *index;
-	getcwd(workingdir, MAXDIR);
+	int n = 0;
 	
-	printf(
-		"[librarian] making index \"%s\" for dir \"%s\"\n",
-		filename, srcdir);
-	
-	if ((index = fopen(filename, "w+")) == NULL) {
-		fprintf(stderr, "\x1b[31m[librarian] [makemdindex]"
-			" failed to open \"%s\"\x1b[0m\n", 
-			filename);
-		return(NULL);
+	getcwd(workingdir, MAXDIR); /* store the cwd to make sure we get back */
+
+	/* walk the directory recursively and save all the filenames */
+	recursivefilesearch(srcdir, srcdir, _index, &n);
+	_index[n][0] = '\0';
+
+	chdir(workingdir); /* leave no trace */
+}
+
+/* Walks a directory recursively. Writes file paths to index[i] and increments
+   i as they are found. */
+void recursivefilesearch(char *searchdir, char *parent, 
+					char index[MAX_FILES][MAXDIR], int *i) {
+	DIR *f;
+	struct dirent *entry; /* for getting filenames and directory info */
+	struct stat filestat; /* for checking if a file is a directory */
+	char reldir[MAXDIR];  /* buffer for building the next directory name
+	                         (to be passed as "parent" when recursing) */
+
+	if (chdir(searchdir)) {
+		fprintf(stderr, "\x1b[31m[librarian] [recursivefilesearch]"
+						" could not cd to source directory \"%s\"\x1b[0m\n",
+						searchdir);
+	}
+
+	if ((f = opendir(".")) == NULL) {
+		fprintf(stderr, "\x1b[31m[librarian] [recursivefilesearch]"
+						" could not open directory at \".\"\x1b[0m\n");
 	}
 	
-	walkfiles(srcdir, ".md", srcdir, index);
-	
-	rewind(index);
-	
-	chdir(workingdir);
-
-	return(index);
+	while ( (entry = readdir(f)) ) {
+		stat(entry->d_name, &filestat); /* inspect file information */
+		if (S_ISDIR(filestat.st_mode)) { /* if the file is a directory, */
+			if (strncmp(entry->d_name, ".", 1) == 0 
+				|| strcmp(entry->d_name, "..") == 0) {
+				/* and it's either "." or "..", don't follow it! */
+				continue;
+			} else {
+				/* write the new directory (entry->d_name)
+				   onto the end of the previous one (parent) */
+				strcpy(reldir, parent);
+				strcat(reldir, "/");
+				strcat(reldir, entry->d_name);
+				/* recurse into the new directory (entry->d_name) with
+				   knowledge of where we came from (reldir) */
+				recursivefilesearch(entry->d_name, reldir, index, i);
+			}
+		} else { /* if the file is NOT a directory, */
+			if (entry->d_name[0] == '.') {
+				continue;
+			} else {
+				if (*i < MAX_LINKS) {
+					strcpy(index[*i], parent);
+					strcat(index[*i], "/");
+					strcat(index[*i], entry->d_name);
+					*i += 1;
+				}
+			}
+		}
+	}
+	closedir(f);
+	chdir("..");
 }
+
 
 /*  Walk recursively through [dir], looking for files ending in [ext].
     Write each file as it is found to an index [writefile]. */
@@ -198,4 +319,35 @@ void walkfiles(char *dir, char *ext, char *parent, FILE *writefile) {
 	}
 	closedir(f);
 	chdir("..");
+}
+
+
+
+/* Wrapper for walkfiles that only requires two arguments, [filename]
+   for the index and [srcdir] for the directory to walk. Assumes that
+   we are looking for markdown files. */
+FILE *makemdindex(char *filename, char *srcdir) {
+	
+	char workingdir[MAXDIR];
+	FILE *index;
+	getcwd(workingdir, MAXDIR);
+	
+	printf(
+		"[librarian] making index \"%s\" for dir \"%s\"\n",
+		filename, srcdir);
+	
+	if ((index = fopen(filename, "w+")) == NULL) {
+		fprintf(stderr, "\x1b[31m[librarian] [makemdindex]"
+			" failed to open \"%s\"\x1b[0m\n", 
+			filename);
+		return(NULL);
+	}
+	
+	walkfiles(srcdir, ".md", srcdir, index);
+	
+	rewind(index);
+	
+	chdir(workingdir);
+
+	return(index);
 }

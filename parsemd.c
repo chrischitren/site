@@ -61,13 +61,6 @@ int writedoc_html(Document *_doc, char *writedir) {
 		return(1);
 	}
 
-	fputs(
-	"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
-	"<meta charset=\"UTF-8\">\n<title>chrischitren</title>\n"
-	"<link rel=\"icon\" type=\"image/png\" href=\"/images/favicon_32.png\">\n"
-	"<link rel=\"stylesheet\" href=\"main.css\">\n</head>\n<body>",
-	wfp);
-
 	fputs("\n<main>\n", wfp);
 	for (i = 0; i < MAX_DOCSZ; i++) {
 		if (_doc->chunklist[i] != NULL) {
