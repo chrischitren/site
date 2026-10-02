@@ -53,6 +53,7 @@ int writedoc_html(Document *_doc, char *writedir) {
 						" refusing to overwrite \"%s\"\x1b[0m\n",
 						writedir);
 		return(1);
+		
 	}
 	
 	if ((wfp = fopen(writedir, "a")) == NULL) {
@@ -246,6 +247,7 @@ int decidetype(char *_chunkstr, int _chunksz) {
 
 void writechunk_html(ChunkElement *c, FILE *_fp, int depth) {
 	int i = 0;
+	int j;
 	int pathisurl = 0;
 	char tags[TYPE_MAXTYPE][12];
 
@@ -269,13 +271,26 @@ void writechunk_html(ChunkElement *c, FILE *_fp, int depth) {
 	if (c->type == TYPE_ATTRIBUTE || depth == -1) {
 		for (i = c->position; i < c->position + c->length; i++) {
 			if (c->type == TYPE_ATTRIBUTE) {
-				if (*((c->chunkstr)+i) == ':' && i < (c->position)+(c->length)-3) {
-					if (*((c->chunkstr)+i+1) == '/' 
-							&& *((c->chunkstr)+i+2) == '/'  ) {
-						pathisurl = 1;
+				if (i == c->position) {
+					for (j = c->position; j < c->position+c->length-3; j++) {
+						if (   *((c->chunkstr)+j) == ':'
+							&& *((c->chunkstr)+j+1) == '/'
+							&& *((c->chunkstr)+j+2) == '/') {
+								pathisurl = 1;
+								break;
+						}
 					}
 				}
 				if (!pathisurl) {
+					/* search backward for last '/' */
+					if (i == c->position) {
+						for (j = c->position+c->length; j > c->position; j--) {
+							if (*((c->chunkstr)+j) == '/') {
+								i = j;
+								break;
+							}
+						}
+					}
 					if (*((c->chunkstr)+i) == '.'
 							&& i < (c->position) + (c->length) - 2) {
 						if (*((c->chunkstr)+i+1) == 'm'

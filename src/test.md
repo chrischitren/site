@@ -14,7 +14,7 @@ That's a heading!
 
 ###### Heading 6
 
-![Homemade typesetting equipment](images/type_overview.jpg)
+![Homemade typesetting equipment](images/type_overview.png)
 
 so tiny! so cute!
 

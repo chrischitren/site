@@ -17,6 +17,8 @@ int main() {
 	int i, j, k, matchcount, nfiles;
 	
 	struct stat st;
+	FILE *tmpfp;
+	FILE *fp;
 	
 	char *readpath = "src";
 	char srclist[MAX_LINKS][MAXDIR];
@@ -24,6 +26,8 @@ int main() {
 	char *writepath = "html";
 	char outlist[MAX_LINKS][MAXDIR];
 	
+	char headerbuffer[4096];
+
 	int edgematrix[MAX_LINKS][MAX_LINKS];
 
 	Document doc;
@@ -68,11 +72,11 @@ int main() {
 
 	/* build an index of the source directory, including *all* files */
 	buildindex(srclist, readpath);
-	for (i = 0; i < MAX_LINKS; i++) {
-		outlist[i][0] = '\0';
-	}
 	
 	/* build output paths for markdown files that need to get parsed */
+	for (i = 0; i < MAX_LINKS; i++) {
+		outlist[i][0] = '\0';
+	}	
 	i = 0;
 	while (srclist[i][0] != '\0' && i < MAX_LINKS) {
 		strcpy(outlist[i], writepath);
@@ -85,7 +89,6 @@ int main() {
 		}
 		i++;
 	}
-
 	nfiles = i;
 	
 	/**************  printing for testing  *****************/
@@ -106,12 +109,15 @@ int main() {
 
 	/* We now have a list of input and output files. The next step is to
 	   parse the markdown documents and record their outgoing link lists. */
-	for (i = 0; i < MAX_FILES; i++) {
+	for (i = 0; i < nfiles; i++) {
 		if (strstr(srclist[i], ".md") != NULL) {
 			printf("\x1b[36mparsing \"%s\" (\x1b[33m\"%s\"\x1b[36m)\x1b[0m\n",
 				srclist[i], outlist[i]);
 			readdoc_md(&doc, srclist[i]);
-			writedoc_html(&doc, outlist[i]);
+			if (writedoc_html(&doc, outlist[i]) != 0) {
+				freedoc(&doc);
+				return(1);
+			}
 			j = 0;
 			while (doc.outlinks[j][0] != '\0') {
 				if (strstr(doc.outlinks[j], "//") != NULL) {
@@ -145,58 +151,88 @@ int main() {
 			printf("\n");
 		}
 	}
-	
 	for (i = 0; i < nfiles; i++) {
+		printf("%-32s  ", outlist[i]);
 		for (j = 0; j < nfiles; j++) {
-			/* edgematrix[i][j] = 1  =>  file i contains link to file j */
 			printf("%d ", edgematrix[i][j]);
 		}
 		printf("\n");
 	}
-	
+	printf("\n");
 
-	/* Writing
-	i = 0;
-	while (fgets(mdfiledir, MAXDIR, ifp) != NULL) {
-		mdfiledir[strcspn(mdfiledir, "\n")] = '\0';
-		printf("\n\x1b[33m%s\x1b[0m\n", mdfiledir);
-
-		strcpy(htmlfiledir, writepath);
-		strcat(htmlfiledir, strrchr(mdfiledir, '/'));
-		strcpy(strstr(htmlfiledir, ".md"), ".html");
-		printf(" -> \x1b[33m%s\x1b[0m\n", htmlfiledir);
-
-		readdoc_md(&doc, mdfiledir);
+	/* Build headers, but... you have to prepend!! */
+	for (i = 0; i < nfiles; i++) {
+		if (strstr(srclist[i], ".md") != NULL) {
+			strcpy(headerbuffer, 
+			"<!DOCTYPE html>\n"
+			"<html lang=\"en\">\n"
+			"<head>\n"
+			  "<meta charset=\"UTF-8\">\n"
+			  "<title>");
+			
+			strcat(headerbuffer, strrchr(outlist[i], '/')+1);
 		
-		i = 0;
-		while (doc.outlinks[i][0] != '\0') {
-			if (strstr(doc.outlinks[i], "//") == NULL) {
-				printf("  %s\n", strrchr(doc.outlinks[i], '/')+1);
-				j = 0;
-				while (srclist[j][0] != '\0') {
-					if (strcmp( strrchr(srclist[j], '/')+1,
-					            strrchr(doc.outlinks[i], '/')+1) == 0) {
-						printf("\x1b[32m    found \"%s\"\x1b[0m\n", 
-								srclist[j]);
-						j = -1;
-						break;
-					}
-					j++;
-				}
-				if (j != -1) {
-					printf("\x1b[31m[librarian]"
-							" broken link in \"%s\": \"%s\"\x1b[0m\n",
-							mdfiledir, doc.outlinks[i]);
+			strcat(headerbuffer,
+			  "</title>\n"
+			  "<link rel=\"icon\" type=\"image/png\" "
+								 "href=\"/images/favicon_32.png\">\n"
+			  "<link rel=\"stylesheet\" href=\"main.css\">\n"
+			"</head>\n"
+			"<body>");
+			
+			tmpfp = tmpfile();
+			fp = fopen(outlist[i], "r+");
+			
+			fwrite(headerbuffer, sizeof(char), strlen(headerbuffer), tmpfp);
+
+			while ((j = fread(headerbuffer, sizeof(char), 4096, fp)) != 0) {
+				fwrite(headerbuffer, sizeof(char), j, tmpfp);
+			}
+
+			fflush(tmpfp);
+
+			rewind(fp);
+			rewind(tmpfp);
+
+			while ((j = fread(headerbuffer, sizeof(char), 4096, tmpfp)) != 0) {
+				fwrite(headerbuffer, sizeof(char), j, fp);
+			}
+			
+			fclose(tmpfp);
+			fclose(fp);
+		}
+	}
+
+	
+	/* Build footers by reading columns of edgematrix to find backlinks. */
+	for (i = 0; i < nfiles; i++) {
+		if (strstr(srclist[i], ".md") != NULL) {
+			for (j = 0; j < nfiles; j++) {
+				if (edgematrix[j][i] == 1) {
+					j = -1;
+					break;
 				}
 			}
-			i++;
+			fp = fopen(outlist[i], "a");
+			fseek(fp, 0, SEEK_END);
+			if (j == -1) {
+				fprintf(fp, "<footer><p>pages that link here:</p><p>");
+				for (j = 0; j < nfiles; j++) {
+					if (edgematrix[j][i] == 1 && j != i) {
+						/* if there is a backlink j -> i, */
+						fprintf(fp, "<a href=\"%s\">%s</a>",
+								strrchr(outlist[j], '/')+1,
+								strrchr(outlist[j], '/')+1);
+					}
+				}
+			} else {
+				fprintf(fp, "<footer><p>this page is an orphan!");
+			}
+			fprintf(fp, "</p></footer></body></html>");
+			fclose(fp);
 		}
-
-		
-		
-		writedoc_html(&doc, htmlfiledir);
-		freedoc(&doc);
-	} */
+	}
+	
 	return(0);
 }
 

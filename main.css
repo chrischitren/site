@@ -15,4 +15,5 @@ ul { margin-left: 1em;  padding-left: 1em; }
 ul li { list-style-type: none; position: relative; }
 li p { margin: 1px; }
 ul li::before { position: absolute; left: -0.7em; font-size: 1em; content: "-"; }
-footer { width: 580;  background: #423;  min-height: 20px; }
+footer { width: 580;  background: #423;  min-height: 20px; padding: 1px 5px; }
+footer p { margin-top: 3px; margin-bottom: 6px; }
