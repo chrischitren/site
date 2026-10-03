@@ -25,28 +25,22 @@ int main() {
 	
 	char *writepath = "html";
 	char outlist[MAX_LINKS][MAXDIR];
-	
+
+	char cleanlist[MAX_LINKS][MAXDIR];	
+
 	char headerbuffer[4096];
-
-	int edgematrix[MAX_LINKS][MAX_LINKS];
-
-	Document doc;
-
-/* HTML header? */
-/*	fputs(
-	"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
-	"<meta charset=\"UTF-8\">\n<title>chrischitren</title>\n"
-	"<link rel=\"icon\" type=\"image/png\" href=\"/images/favicon_32.png\">\n"
-	"<link rel=\"stylesheet\" href=\"main.css\">\n</head>\n<body>",
-	wfp);*/
 	
-/*	if (readpath[strlen(readpath)-1] == '/') {
+	int edgematrix[MAX_LINKS][MAX_LINKS];
+	
+	Document doc;
+	
+	if (readpath[strlen(readpath)-1] == '/') {
 		fprintf(stderr, "\x1b[31m[librarian]"
 						" source dir \"%s\" has trailing slash\x1b[0m\n",
 						readpath);
 		return(1);
-	}*/
-
+	}
+	
 	for (i = 0; i < MAX_LINKS; i++) {
 		for (j = 0; j < MAX_LINKS; j++) {
 			edgematrix[i][j] = 0;
@@ -69,13 +63,14 @@ int main() {
 		printf("[librarian] making directory \"%s\"\n", writepath);
 		mkdir(writepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	}
-
+	
 	/* build an index of the source directory, including *all* files */
 	buildindex(srclist, readpath);
 	
 	/* build output paths for markdown files that need to get parsed */
 	for (i = 0; i < MAX_LINKS; i++) {
 		outlist[i][0] = '\0';
+		cleanlist[i][0] = '\0';
 	}	
 	i = 0;
 	while (srclist[i][0] != '\0' && i < MAX_LINKS) {
@@ -84,8 +79,14 @@ int main() {
 			strcat(outlist[i], "/");
 		}
 		strcat(outlist[i], strrchr(srclist[i], '/')+1);
+		strcat(cleanlist[i], strrchr(srclist[i], '/')+1);
+		
 		if (strstr(srclist[i], ".md") != NULL) {
 			strcpy(strstr(outlist[i], ".md"), ".html");
+			*(strstr(cleanlist[i], ".md")) = '\0';
+			while (strchr(cleanlist[i], '_') != NULL) {
+				*(strchr(cleanlist[i], '_')) = ' ';
+			}
 		}
 		i++;
 	}
@@ -98,15 +99,16 @@ int main() {
 	while (srclist[i][0] != '\0' && i < MAX_LINKS) {
 		printf("%s", srclist[i]);
 		if (outlist[i][0] != '\0') {
-			printf("%*s->  \x1b[33m%s\x1b[0m",
-					(int) (32-strlen(srclist[i])), "", outlist[i]);
+			printf("%*s->  \x1b[33m%s\x1b[0m (\"%s\")",
+					(int) (32-strlen(srclist[i])), "",
+					outlist[i], cleanlist[i]);
 		}
 		printf("\n");
 		i++;
 	} 
 	printf("\n");
 	/*******************************************************/
-
+	
 	/* We now have a list of input and output files. The next step is to
 	   parse the markdown documents and record their outgoing link lists. */
 	for (i = 0; i < nfiles; i++) {
@@ -159,7 +161,7 @@ int main() {
 		printf("\n");
 	}
 	printf("\n");
-
+	
 	/* Build headers, but... you have to prepend!! */
 	for (i = 0; i < nfiles; i++) {
 		if (strstr(srclist[i], ".md") != NULL) {
@@ -168,32 +170,69 @@ int main() {
 			"<html lang=\"en\">\n"
 			"<head>\n"
 			  "<meta charset=\"UTF-8\">\n"
+			  "<meta name=\"viewport\" content=\"width=576\">\n"
 			  "<title>");
 			
-			strcat(headerbuffer, strrchr(outlist[i], '/')+1);
-		
+			strcat(headerbuffer, cleanlist[i]);
+			
 			strcat(headerbuffer,
 			  "</title>\n"
 			  "<link rel=\"icon\" type=\"image/png\" "
 								 "href=\"/images/favicon_32.png\">\n"
 			  "<link rel=\"stylesheet\" href=\"main.css\">\n"
-			"</head>\n"
-			"<body>");
+			"</head>\n");
+			strcat(headerbuffer, "<header><p>");
+
+			k = 0;
+			/**** header generation ****/
+			for (j = 0; j < nfiles; j++) {
+				if (strstr(srclist[j], ".md") != NULL) {
+					if (i != j) {
+						if (k == 0) {
+							k = 1;
+						} else {
+							strcat(headerbuffer, "| "); 
+						}
+						strcat(headerbuffer, "<a href=\"");
+						strcat(headerbuffer, strrchr(outlist[j], '/')+1);
+						strcat(headerbuffer, "\">");
+						strcat(headerbuffer, cleanlist[j]);
+						strcat(headerbuffer, "</a> ");
+					} else {
+						if (k == 0) {
+							k = 1;
+						} else {
+							strcat(headerbuffer, "| "); 
+						}
+						strcat(headerbuffer, "<em>");
+						strcat(headerbuffer, cleanlist[j]);
+						strcat(headerbuffer, "</em> ");
+					}
+				}
+			}
+			/***************************/
 			
+			strcat(headerbuffer, "</p></header>");
+			strcat(headerbuffer, "<body>");
+			
+			/* Prepend header:
+			     write the header to a temporary file, then copy the body file
+			   into this temporary file, then overwrite the original with the
+			   contents of the temporary file. */
 			tmpfp = tmpfile();
 			fp = fopen(outlist[i], "r+");
 			
 			fwrite(headerbuffer, sizeof(char), strlen(headerbuffer), tmpfp);
-
+			
 			while ((j = fread(headerbuffer, sizeof(char), 4096, fp)) != 0) {
 				fwrite(headerbuffer, sizeof(char), j, tmpfp);
 			}
-
+			
 			fflush(tmpfp);
-
+			
 			rewind(fp);
 			rewind(tmpfp);
-
+			
 			while ((j = fread(headerbuffer, sizeof(char), 4096, tmpfp)) != 0) {
 				fwrite(headerbuffer, sizeof(char), j, fp);
 			}
@@ -202,7 +241,6 @@ int main() {
 			fclose(fp);
 		}
 	}
-
 	
 	/* Build footers by reading columns of edgematrix to find backlinks. */
 	for (i = 0; i < nfiles; i++) {
@@ -222,7 +260,7 @@ int main() {
 						/* if there is a backlink j -> i, */
 						fprintf(fp, "<a href=\"%s\">%s</a>",
 								strrchr(outlist[j], '/')+1,
-								strrchr(outlist[j], '/')+1);
+								cleanlist[j]);
 					}
 				}
 			} else {
@@ -247,11 +285,11 @@ void buildindex(char _index[MAX_FILES][MAXDIR], char *srcdir) {
 	int n = 0;
 	
 	getcwd(workingdir, MAXDIR); /* store the cwd to make sure we get back */
-
+	
 	/* walk the directory recursively and save all the filenames */
 	recursivefilesearch(srcdir, srcdir, _index, &n);
 	_index[n][0] = '\0';
-
+	
 	chdir(workingdir); /* leave no trace */
 }
 
@@ -264,7 +302,7 @@ void recursivefilesearch(char *searchdir, char *parent,
 	struct stat filestat; /* for checking if a file is a directory */
 	char reldir[MAXDIR];  /* buffer for building the next directory name
 	                         (to be passed as "parent" when recursing) */
-
+	
 	if (chdir(searchdir)) {
 		fprintf(stderr, "\x1b[31m[librarian] [recursivefilesearch]"
 						" could not cd to source directory \"%s\"\x1b[0m\n",

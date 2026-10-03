@@ -1,19 +1,19 @@
-body { width: 576px;  background: #212;  color: #eee; font-size: 12pt; }
-header { width: 576px;  background: #423;  padding: 10px 0px; display: inline-block; }
-header ul { margin-left: 10px;  padding-left: 10px;  display: inline-block; list-style-type: none; }
+body { max-width: 576px; width: 100%;  background: #212;  color: #eee; font-size: 12pt; }
+header { width: 100%;  background: #423;  min-height: 20px; padding: 1px 5px; margin: 3px 0px; }
+header p { margin-top: 3px; margin-bottom: 6px; }
 header a { text-decoration: none; }
 header a:hover { background: #000; }
 a { color: #fff; text-decoration: underline 1px; }
 main a:hover { background: #423; }
 main a[href*="//"] { color: #fff; text-decoration: underline dotted 1px; }
-blockquote { max-width: 576px;  margin-left: 16px;  padding-left: 8px; border-left: 1px solid #eee; }
-blockquote * { max-width: 576px;  margin-top: 16px; margin-bottom: 1ex; }
-code { background: #2d1d2d;  margin: 1px;  padding: 1px 2px; font-family: "Consolas"; font-size: 80%; border-radius: 3px; }
-pre { width: 566px;  background: #2d1d2d;  margin: 10px 0px;  padding: 3px 5px; font-family: "Consolas"; font-size: 80%; }
+blockquote { width: 100%;  margin-left: 16px;  padding-left: 8px; border-left: 1px solid #eee; }
+blockquote * { width: 100%;  margin-top: 16px; margin-bottom: 1ex; }
+code { background: #2d1d2d;  margin: 1px;  padding: 1px 2px; font-family: "Consolas", monospace; font-size: 80%; border-radius: 3px; }
+pre { width: 100%;  background: #2d1d2d;  margin: 10px 0px;  padding: 3px 5px; font-family: "Consolas", monospace; font-size: 80%; overflow: auto; }
 .right { text-align: right; }
 ul { margin-left: 1em;  padding-left: 1em; }
 ul li { list-style-type: none; position: relative; }
 li p { margin: 1px; }
 ul li::before { position: absolute; left: -0.7em; font-size: 1em; content: "-"; }
-footer { width: 580;  background: #423;  min-height: 20px; padding: 1px 5px; }
+footer { width: 100%;  background: #423;  min-height: 20px; padding: 1px 5px; }
 footer p { margin-top: 3px; margin-bottom: 6px; }
