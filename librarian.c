@@ -191,7 +191,7 @@ int main() {
 						if (k == 0) {
 							k = 1;
 						} else {
-							strcat(headerbuffer, "| "); 
+							strcat(headerbuffer, "| ");
 						}
 						strcat(headerbuffer, "<a href=\"");
 						strcat(headerbuffer, strrchr(outlist[j], '/')+1);
