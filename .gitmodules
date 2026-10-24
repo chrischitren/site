@@ -1,0 +1,3 @@
+[submodule "monkdown"]
+	path = monkdown
+	url = ../monkdown/
