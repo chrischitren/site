@@ -6,12 +6,14 @@
 #include "../monkdown/parse.h"
 #include "../monkdown/write.h"
 
+
 int mdtohtml(char *readdir, char *writedir);
 
 int main() {
-	mdtohtml("README.md", "README.html");
+	mdtohtml("../sources/monk.md", "../output/monk.html");
 	return(0);
 }
+
 
 int mdtohtml(char *readdir, char *writedir) {
 	Node *doc = NULL;
@@ -30,7 +32,7 @@ int mdtohtml(char *readdir, char *writedir) {
 	/* Make a title by finding just the file name (no leading directories),
 	   stripping file extension, and replacing '_' with ' ' */
 	if ((p = strrchr(writedir, '/')) != NULL) {
-		strcpy(title, p);
+		strcpy(title, p+1);
 	} else {
 		strcpy(title, writedir);
 	}
