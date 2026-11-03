@@ -12,15 +12,21 @@ struct fnode {
 
 enum ftypes { FTYPE_IGNORE = -1, FTYPE_REG = 0, FTYPE_DIR = 1 };
 
+/* Build a path string to a node relative to a given top level. */
+void fnoderelativepath(char *dest, int destsz, Filenode *tip, Filenode *top);
+
 /* Search for FTYPE_REG Filenodes with [query] in their name */
 int fnodesearch(Filenode *fnode, char *query, Filenode **res, int ressz);
+
 /* Printing */
 void fnodeprint(Filenode *fnode, int depth);
-/* Filenode manipulation functions */
+
+/* Filenode handling functions */
 Filenode *fnodeinit(Filenode *_parent, char *_name, int _ftype);
 int fnodefree(Filenode *fnode);
+
 /* Recursive directory search */
-int buildfnodetree(Filenode *root, char *srcdir);
+int fnodebuildtree(Filenode *root, char *srcdir);
 /********************************************************/
 
 #endif

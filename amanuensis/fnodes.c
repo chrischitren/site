@@ -6,6 +6,18 @@
 
 #include "fnodes.h"
 
+/* Generate a path to "tip" that is relative to "top". If top is not an
+   ancestor of tip, returns tip's full path. */
+void fnoderelativepath(char *dest, int destsz, Filenode *tip, Filenode *top) {
+	strcpy(dest, tip->name);
+	while (tip->parent != top && tip->parent != NULL) {
+		tip = tip->parent;
+		memmove(dest+strlen(tip->name)+1, dest, destsz-(strlen(tip->name)+1));
+		memcpy(dest, tip->name, strlen(tip->name));
+		dest[strlen(tip->name)] = '/';
+	}
+}
+
 /* Recursively search a directory (Filenode with ftype=FTYPE_DIR) for
    FTYPE_REG Filenodes with [query] in their name. Returns number of hits,
    capped at ressz, and places pointers to hit Filenodes in res. */
@@ -26,7 +38,8 @@ int fnodesearch(Filenode *fnode, char *query, Filenode **res, int ressz) {
 						res[n] = fnode->children[i];
 						n += 1;
 					} else {
-						printf("Search results overflowed provided buffer\n");
+						printf("\x1b[31m[pages] [fnodesearch]"
+							" search results overflowed provided buffer\n");
 					}
 				}
 			}
@@ -58,9 +71,8 @@ void fnodeprint(Filenode *fnode, int depth) {
 	}
 }
 
-
-
-int buildfnodetree(Filenode *root, char *srcdir) {
+/* Build a Filenode tree by walking the directory at srcdir recursively */
+int fnodebuildtree(Filenode *root, char *srcdir) {
 	
 	DIR *f;
 	struct dirent *entry; /* for getting filenames and directory info */
@@ -68,7 +80,7 @@ int buildfnodetree(Filenode *root, char *srcdir) {
 	Filenode *fnp;
 
 	if ((f = opendir(srcdir)) == NULL) {
-		printf("\x1b[31m[pages] [buildfnodetree] "
+		printf("\x1b[31m[pages] [fnodebuildtree] "
 				"could not open directory \"%s\"", srcdir);
 	}
 	
@@ -83,7 +95,7 @@ int buildfnodetree(Filenode *root, char *srcdir) {
 		}
 		if (S_ISDIR(filestat.st_mode)) {
 			fnp->ftype = FTYPE_DIR;
-			buildfnodetree(fnp, fnp->path);
+			fnodebuildtree(fnp, fnp->path);
 		}
 	}
 	closedir(f);
