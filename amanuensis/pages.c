@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
+#include "../monkdown/nodes.h"
 #include "../monkdown/parse.h"
 #include "../monkdown/write.h"
 #include "fnodes.h"
 
-#define MAX_PAGES 64
+#define MAX_PAGES 256
+#define MAX_URLSZ 256
 
 typedef struct page Page;
 struct page {
@@ -17,9 +19,16 @@ struct page {
 	Node *nodemain;
 	Node *nodefooter;
 	
-	Page *links[MAX_PAGES];
+	Page *outlinks[MAX_PAGES];
 	Page *backlinks[MAX_PAGES];
 };
+
+/* wrong place */
+void nodeprintlinks(Node *n);
+
+enum linktypes { LINKTYPE_WEB = 0, LINKTYPE_PAGE,
+				LINKTYPE_FRAGMENT, LINKTYPE_OTHER };
+int guesslink(char *linkstr);
 
 
 /* PAGE HANDLING FUNCTIONS */
@@ -29,7 +38,6 @@ void pageprint(Page *pg);
 
 /* DEPRECATED MISCELLANEA */
 int mdtohtml(char *readdir, char *writedir);
-Node *makenavtree(Node *doc);
 void getcleannodetext(char *dest, int destsz, Node *n, int toplevel);
 
 
@@ -65,63 +73,323 @@ void getcleannodetext(char *dest, int destsz, Node *n, int toplevel);
    that any implementation of such standard routines exactly replicates this
    behavior. */
 
+
+
 int main() {
 	Filenode *fnode_sources;
 	Filenode *fnode_config;
 	
-	int i;
+	int i, j, k;
 	Filenode *fnodelistmd[MAX_PAGES];
 	Page *pagelist[MAX_PAGES];
-	
-	char buf[256];
-	char *outdir = "../output";
 
-	fnode_config = fnodeinit(NULL, "../config", FTYPE_DIR);
-	fnodebuildtree(fnode_config, fnode_config->path);
-	fnodeprint(fnode_config, 0);
-	
+	Filenode *fnodelistother[MAX_PAGES];
+
+	Node *nptr;
+	Page *pgptr;
+	Filenode *fnptrbuf[MAX_PAGES];
+	Filenode *fnptr;
+
+	char buf[256];
+	char buf2[256];
+	char *p;
+	int exactmatchfound = 0;
+
+/*	char *outdir = "../output";*/
+
+	/* Initialize empty lists of Pages and Filenodes */
 	for (i = 0; i < MAX_PAGES; i++) {
 		fnodelistmd[i] = NULL;
 		pagelist[i] = NULL;
+		fnodelistother[i] = NULL;
 	}
 	
-	fnode_sources = fnodeinit(NULL, "..", FTYPE_DIR);
+	/* Open the "config" directory */
+	fnode_config = fnodeinit(NULL, "../config", FTYPE_DIR);
+	fnodebuildtree(fnode_config, fnode_config->path);
+	fnodeprint(fnode_config, 0);
+
+	printf("\n");
+	
+	/* Open the source directory */
+	fnode_sources = fnodeinit(NULL, "/mnt/c/Users/1poof/Documents/aaaeph", FTYPE_DIR);
 	fnodebuildtree(fnode_sources, fnode_sources->path);
 	fnodeprint(fnode_sources, 0);
 	
 	printf("\n");
 	
-	/* do something */
-	printf("\x1b[96m%d results for \"%s\"\x1b[0m\n",
-	fnodesearch(fnode_sources, ".md", fnodelistmd, MAX_PAGES), ".md");
+	/* Search the source directory for .md files */
+	printf("Found %d results for \"%s\" in \"%s\"\n",
+	fnodesearch(fnode_sources, ".md", fnodelistmd, MAX_PAGES), ".md",
+				fnode_sources->path);
 
+	printf("\n");
+		
+	/* Make a Page for each source file */
 	for (i = 0; i < MAX_PAGES; i++) {
 		if (fnodelistmd[i] != NULL
 				&& *(strstr(fnodelistmd[i]->path, ".md")+3) == '\0') {
 			
 			printf("Parsing source file \"%s\"\n", fnodelistmd[i]->path);
-			fnoderelativepath(buf, 256, fnodelistmd[i], fnode_sources);
+/*			fnoderelativepath(buf, 256, fnodelistmd[i], fnode_sources);
 			printf("(relative path: \"\x1b[32m%s\x1b[0m/%s\")\n", outdir, buf);
+*/			
+			if ((pagelist[i] = pageinit(fnodelistmd[i])) == NULL) {
+				printf("\x1b[31m[pages] "
+						"received NULL Page for path %s\x1b[0m\n", 
+						fnodelistmd[i]->path);
+			}
+			/*printf("\n");*/
+		}
+	}
+	
+	printf("\n");
+	
+	/* Get the links in every page. We need to store them... */
+	for (i = 0; i < MAX_PAGES; i++) {
+		if (pagelist[i] == NULL) {
+			continue;
+		}
+		
+/*		pageprint(pagelist[i]);*/
+		strcpy(buf, pagelist[i]->fnode->name);
+		if ((p = strrchr(buf, '/')) != NULL) {
+			memmove(buf, p+1, strlen(buf)+1);
+		}
+		if ((p = strrchr(buf, '.')) != NULL) {
+			*p = '\0';
+		}
+
+		printf("Page source at %s (\"%s\")\n",
+				pagelist[i]->fnode->path, buf);
+		
+		/* Find all the hrefs */
+		nptr = pagelist[i]->nodemain;
+		while ((nptr = nextnodewithattributekey(nptr, "href")) != NULL) {
+			strcpy(buf, getattributebykey(nptr, "href")->value);
+			if (guesslink(buf) == LINKTYPE_PAGE) {
+				if ((p = strrchr(buf, '/')) != NULL) {
+					memmove(buf, p+1, strlen(buf)+1);
+				}
+				if ((p = strrchr(buf, '.')) != NULL) {
+					*p = '\0';
+				}
+				printf("    Link to \"%s\", searching for page \"%s\"\n",
+						getattributebykey(nptr, "href")->value, buf);
+				pgptr = NULL;
+				exactmatchfound = 0;
+				/* Search all the Pages for one with name containing the link
+				   referent's filename, stopping if we find an exact match. */
+				for (j = 0; j < MAX_PAGES; j++) {
+					if (i == j || pagelist[j] == NULL) {
+						continue;
+					}
+					strcpy(buf2, pagelist[j]->fnode->name);
+					if ((p = strrchr(buf2, '.')) != NULL) {
+						*p = '\0';
+					}
+					if (strstr(buf2, buf) != NULL) {
+						if (strcmp(buf2, buf) == 0) {
+							printf("      %c\x1b[32m page at "
+									"%s (\"%s\")\x1b[0m\n",
+								(exactmatchfound==0) ? '>' : ' ',
+								pagelist[j]->fnode->path, buf2);
+							if (exactmatchfound == 1) {
+								printf("        \x1b[31mWARNING! Multiple "
+										"exact matches found!\x1b[0m\n");
+							} else {
+								exactmatchfound = 1;
+								pgptr = pagelist[j];
+							}
+						} else if (exactmatchfound == 0) {
+							printf("      ?\x1b[33m page at "
+										"%s (\"%s\")?\x1b[0m\n",
+								pagelist[j]->fnode->path, buf2);
+							pgptr = pagelist[j];
+						}
+					}
+				}
+				/* If we found a match for the referent, */
+				if (pgptr != NULL) {
+					if (exactmatchfound == 0) {
+						printf("        \x1b[31mWARNING! "
+								"Approximate match at \"%s\" used!\x1b[0m\n",
+								pgptr->fnode->path);
+					}
+					/* Update Node's Attribute to conform to the output
+					   directory structure */
+					printf("        Updating Node's Attribute value for key "
+							"'href' to \"%s\"\n", pgptr->fnode->name);
+					removeattribute(nptr, "href");
+					addattribute(nptr, "href",
+							pgptr->fnode->name, strlen(pgptr->fnode->name));
+					/* Store pointer to referent's Page in outlinks */
+					for (j = 0; j < MAX_PAGES; j++) {
+						if (pagelist[i]->outlinks[j] == NULL) {
+							pagelist[i]->outlinks[j] = pgptr;
+							break;
+						} else {
+							if (pagelist[i]->outlinks[j] == pgptr) {
+								break;
+							}
+						}
+					}
+					if (j == MAX_PAGES) {
+						printf("\x1b[31mWARNING! Page %s"
+								" has full outlink list\x1b[0m\n",
+								pagelist[i]->fnode->name);
+					}
+					/* Store pointer to the Page we're checking in the ref-
+					   erent's list of backlinks ('pages that link here') */
+					for (j = 0; j < MAX_PAGES; j++) {
+						if (pgptr->backlinks[j] == NULL) {
+							pgptr->backlinks[j] = pagelist[i];
+							break;
+						} else {
+							if (pgptr->backlinks[j] == pagelist[i]) {
+								break;
+							}
+						}
+					}
+					if (j == MAX_PAGES) {
+						printf("\x1b[31mWARNING! Page %s"
+								" has full backlink list\x1b[0m\n",
+								pgptr->fnode->name);
+					}
+				/* Warn if we could not find even an approximate match */
+				} else {
+					printf("        \x1b[31mWARNING! "
+							"No match found!\x1b[0m\n");
+				}
+			} else if (guesslink(buf) == LINKTYPE_WEB) {
+				printf("    Link to \"%s\" - web\n", buf);
+				/* TODO Perhaps use libcurl to check for dead links */
+			} else if (guesslink(buf) == LINKTYPE_FRAGMENT) {
+				printf("    Link to \"%s\" - fragment\n", buf);
+			} else if (guesslink(buf) == LINKTYPE_OTHER) {
+				printf("    Link to \"%s\" - attachment?\n", buf);
+				k = fnodesearch(fnode_sources, buf, fnptrbuf, MAX_PAGES);
+				exactmatchfound = 0;
+				for (j = 0; j < k; j++) {
+					if (strcmp(buf, fnptrbuf[j]->name) == 0) {
+						printf("      %c \x1b[32m%s\x1b[0m\n",
+							(exactmatchfound==0) ? '>' : ' ',
+							fnptrbuf[j]->path);
+						if (exactmatchfound == 1) {
+							printf("        \x1b[31mWARNING! Multiple "
+									"exact matches found!\x1b[0m\n");
+						} else {
+							exactmatchfound = 1;
+							fnptr = fnptrbuf[j];
+						}
+					} else if (exactmatchfound == 0) {
+						printf("      ?\x1b[33m %s\x1b[0m\n",
+								fnptrbuf[j]->path);
+						fnptr = fnptrbuf[j];
+					}
+				}
+				if (j > 0) {
+					/* TODO Update link in Node; store link/file info. */
+					if (exactmatchfound == 0) {			
+						printf("        \x1b[31mWARNING! "
+								"Approximate match at \"%s\" used!\x1b[0m\n",
+								fnptr->path);
+					}
+					printf("        Updating Node's Attribute \"href\" to"
+							" \"%s\"\n", fnptr->name);
+					removeattribute(nptr, "href");
+					addattribute(nptr, "href",
+									fnptr->name, strlen(fnptr->name));
+				} else {
+					printf("        \x1b[31mWARNING! "
+							"No match found!\x1b[0m\n");
+				}
+				for (j = 0; j < nptr->numchildren; j++) {
+					if (nptr->children[j]->type == TYPE_IMG) {
+						printf("        Link has image requesting %s\n",
+							getattributebykey(nptr->children[j],"src")->value);
+					}
+				}
+			} else {
+				printf("\x1b[31mUnidentifiable link type: "
+						"\"%s\"\x1b[0m\n", buf);
+			}
+		}
+		/*
+		nptr = pagelist[i]->nodemain;
+		while ((nptr = nextnodewithattributekey(nptr, "src")) != NULL) {
+			printf("    Link to \"%s\" - image?\n",
+					getattributebykey(nptr, "src")->value);
 			
-			pagelist[i] = pageinit(fnodelistmd[i]);
+			printf("        \x1b[31mWARNING! Not handled\x1b[0m\n");
+		}*/
+	}
+
+	printf("\n");
+	
+	for (i = 0; i < MAX_PAGES; i++) {
+		if (pagelist[i] != NULL) {
+			if (pagelist[i]->backlinks[0] == NULL) {
+				printf("\x1b[31m");
+			}
+			printf("%s\x1b[0m\n", pagelist[i]->fnode->name);
+			for (j = 0; j < MAX_PAGES; j++) {
+				if (pagelist[i]->outlinks[j] != NULL) {
+					printf("    %s\n",
+							pagelist[i]->outlinks[j]->fnode->name);
+				}
+			}
+			for (j = 0; j < MAX_PAGES; j++) {
+				if (pagelist[i]->backlinks[j] != NULL) {
+					printf("    \x1b[93m%s\x1b[0m\n",
+							pagelist[i]->backlinks[j]->fnode->name);
+				}
+			}
+		}
+	}	
+
+/*
+	for (i = 0; i < MAX_PAGES; i++) {
+		if (pagelist[i] != NULL) {
 			pageprint(pagelist[i]);
 		}
 	}
-	
-	/****************/
-	
+*/
+
 	/* Clean up all our allocated things */
 	for (i = 0; i < MAX_PAGES; i++) {
 		if (pagelist[i] != NULL) {
-			printf("freeing page at %p\n", (void*) pagelist[i]);
+/*			printf("freeing page at %p\n", (void*) pagelist[i]);*/
 			pagefree(pagelist[i]);
 		}
 	}
-	
 	fnodefree(fnode_sources);
 	fnodefree(fnode_config);
 	
 	return(0);
+}
+
+
+/* We would really like a function that treats the Node as a stream; it stores
+   a pointer to the last Node that returned a hit so that we can put it in a
+   while loop until it returns a signal that no hits were found. */
+
+int guesslink(char *linkstr) {
+	if ( (strncmp(linkstr, "https://", 8) == 0)
+			|| (strncmp(linkstr, "http://", 7) == 0)
+			|| (strstr(linkstr, "//") != NULL)
+			|| (strncmp(linkstr, "www.", 4) == 0) ) {
+		return(LINKTYPE_WEB);
+	}
+	if (linkstr[0] == '#') {
+		return(LINKTYPE_FRAGMENT);
+	}
+	if ( (strstr(linkstr, ".md") != NULL)
+			|| (strstr(linkstr, ".html") != NULL)
+			|| (strchr(linkstr, '.') == NULL) ) {
+		return(LINKTYPE_PAGE);
+	}
+	return(LINKTYPE_OTHER);
 }
 
 
@@ -134,6 +402,7 @@ int main() {
 Page *pageinit(Filenode *fnode) {
 	Page *pg;
 	FILE *readfp = NULL;
+	int i;
 
 	if (fnode == NULL) {
 		printf("\x1b[31m[pages] [pageinit] "
@@ -147,6 +416,11 @@ Page *pageinit(Filenode *fnode) {
 
 	pg->nodeheader = NULL;
 	pg->nodefooter = NULL;
+
+	for (i = 0; i < MAX_PAGES; i++) {
+		pg->outlinks[i] = NULL;
+		pg->backlinks[i] = NULL;
+	}
 
 	/* Open file pointers to relevant files */	
 	if ((readfp = fopen(fnode->path, "r")) == NULL) {
@@ -178,6 +452,7 @@ void pagefree(Page *pg) {
 	free(pg);
 }
 
+
 /* Print all the data of a Page for debugging */
 void pageprint(Page *pg) {
 	printf("\x1b[93m------ PAGE ------ (%p)\n", (void *)pg);
@@ -190,15 +465,61 @@ void pageprint(Page *pg) {
 			(void *)pg->nodemain);
 	printf("nodefooter: %4d nodes (%p)\n", countnodes(pg->nodefooter),
 			(void *)pg->nodefooter);
-	printf("links: ?\n"); /* TODO link printing */
+	printf("outlinks: ?\n"); /* TODO link printing */
 	printf("backlinks: ?\n"); /* TODO backlink printing */
 
-	printf("------------------\x1b[0m\n\n");
+	printf("------------------\x1b[0m\n");
 }
 
 /****************************************************************************/
 /* DEPRECATED MISCELLANEA                                                   */
 /****************************************************************************/
+
+void nodeprintlinks(Node *n) {
+	int i = 0;
+	char buf[MAX_ATTRIBUTESZ];
+	
+	buf[0] = '\0';
+	
+	if (n == NULL) {
+		return;
+	}
+	
+	if (n->attributes != NULL) {
+		if (n->type == TYPE_A) {
+			writeattributebykey(buf, MAX_ATTRIBUTESZ, n, "href");
+		}
+		if (n->type == TYPE_IMG) {
+			writeattributebykey(buf, MAX_ATTRIBUTESZ, n, "src");
+		}
+	}
+	if (buf[0] != '\0') {
+		printf("\x1b[33m%s\x1b[0m", buf);
+		switch (guesslink(buf)) {
+			case LINKTYPE_WEB:
+				printf(" (web)\n");
+				break;
+			case LINKTYPE_PAGE:
+				printf(" (page)\n");
+				break;
+			case LINKTYPE_FRAGMENT:
+				printf(" (fragment)\n");
+				break;
+			case LINKTYPE_OTHER:
+				printf(" (other)\n");
+				break;
+			default:
+				break;
+		}
+	}
+	while (i < n->numchildren) {
+		if (n->children[i] != NULL) {
+			nodeprintlinks(n->children[i]);
+		}
+		i++;
+	}
+}
+
 
 int mdtohtml(char *readdir, char *writedir) {
 	Node *doc = NULL;
@@ -292,47 +613,6 @@ int mdtohtml(char *readdir, char *writedir) {
 Node *makenavheader(Page *pg) {
 	
 	return(NULL);
-}
-
-
-Node *makenavtree(Node *doc) {
-	Node *ntnode = NULL;
-	int i, j;
-	Node *n;
-	Node *a;
-	char buf[32];
-	char bigbuf[1024];
-
-	ntnode = createnode("", 0, NULL, TYPE_MAXTYPE);
-
-	for (i = 0; i < doc->numchildren; i++) {
-		if (doc->children[i] != NULL) {
-			n = doc->children[i];
-			if (n->type >= TYPE_H1
-					&& n->type <= TYPE_H6) {
-				
-				getcleannodetext(bigbuf, 1024, n, 1);
-				printf("\x1b[33m%s\x1b[0m\n", bigbuf);
-
-			/*	printf("%*s%s%s%s\n", 2*(n->type - TYPE_H1), "",
-								"# ", n->children[0]->content,
-								n->children[1]->attributes);*/
-				for (j = 0; j < 2*(n->type - TYPE_H1); j++) {
-					buf[j] = '#';
-				}
-				buf[j] = '\0';
-				a = createnode(n->children[0]->content,
-								n->children[0]->contentlen,
-								createnode(buf,strlen(buf),ntnode,TYPE_P),
-								TYPE_A);
-				printnodes(ntnode, 0, 1); /* TODO debug */
-				a->attributes = 
-					malloc(sizeof(char)*(strlen(n->children[1]->attributes)+1));
-				strcpy(a->attributes, n->children[1]->attributes);
-			}
-		}
-	}
-	return(ntnode);
 }
 
 void getcleannodetext(char *dest, int destsz, Node *n, int toplevel) {
